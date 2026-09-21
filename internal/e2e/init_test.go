@@ -65,6 +65,21 @@ func TestGreenfieldAndUnknownNamespace(t *testing.T) {
 	}
 }
 
+func TestPreviewRejectsChangedProjectInput(t *testing.T) {
+	dir := copyBrownfield(t)
+	preview := runInit(t, dir, "")
+	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("changed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := cli.Run([]string{"init", "--workspace", dir, "--format", "json", "--approve", preview.PlanID}, &stdout, &stderr); code != 5 {
+		t.Fatalf("changed preview exit=%d stderr=%q", code, stderr.String())
+	}
+	if _, err := os.Lstat(filepath.Join(dir, ".uawp")); !os.IsNotExist(err) {
+		t.Fatalf("state created after input drift: %v", err)
+	}
+}
+
 func runInit(t *testing.T, dir, approval string) initOutput {
 	t.Helper()
 	args := []string{"init", "--workspace", dir, "--format", "json"}

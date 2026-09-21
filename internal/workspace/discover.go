@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/uawp/uawp/internal/core"
+	"github.com/uawp/uawp/internal/plan"
 )
 
 const maxManifestBytes = 1 << 20
@@ -26,6 +27,30 @@ type Inventory struct {
 	ManifestError      string
 	RootContextPresent bool
 	NativeFiles        []string
+}
+
+func ProjectInputs(root Root) ([]plan.Input, error) {
+	var inputs []plan.Input
+	for _, name := range []string{"context.md", "AGENTS.md", "CLAUDE.md"} {
+		path := filepath.Join(root.Path(), name)
+		info, err := os.Lstat(path)
+		if os.IsNotExist(err) {
+			inputs = append(inputs, plan.Input{Path: name, SHA256: plan.MissingSHA256})
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("inspect project input %s: %w", name, err)
+		}
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("project input %s is not a regular file", name)
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		inputs = append(inputs, plan.Input{Path: name, SHA256: plan.HashBytes(content)})
+	}
+	return inputs, nil
 }
 
 func Discover(root Root) (Inventory, error) {
@@ -58,6 +83,12 @@ func Discover(root Root) (Inventory, error) {
 	}
 
 	manifestPath := filepath.Join(namespace, "manifest.json")
+	manifestInfo, err := os.Lstat(manifestPath)
+	if err == nil && (!manifestInfo.Mode().IsRegular() || manifestInfo.Mode()&os.ModeSymlink != 0) {
+		inventory.Namespace = NamespaceInvalid
+		inventory.ManifestError = "manifest.json is not a regular file"
+		return inventory, nil
+	}
 	manifestFile, err := os.Open(manifestPath)
 	if os.IsNotExist(err) {
 		inventory.Namespace = NamespaceUnknown

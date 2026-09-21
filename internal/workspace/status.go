@@ -42,6 +42,12 @@ func Doctor(root Root) DoctorReport {
 }
 
 func diagnose(root Root) StatusReport {
+	// A journal is meaningful even when a crash occurred before manifest.json,
+	// which is intentionally published last.
+	recoveryPath := filepath.Join(root.Path(), ".uawp", "RECOVERY.json")
+	if info, err := os.Lstat(recoveryPath); err == nil && info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
+		return finding(CodeRecoveryRequired, "error", "A UAWP recovery journal is present.", "Run recovery diagnostics before any mutation.")
+	}
 	inventory, err := Discover(root)
 	if err != nil {
 		return finding(CodeInvalidManifest, "error", err.Error(), "Inspect filesystem permissions and retry diagnostics.")
@@ -61,7 +67,6 @@ func diagnose(root Root) StatusReport {
 		return finding(CodeInvalidManifest, "error", fmt.Sprintf("Unknown namespace classification %q.", inventory.Namespace), "Stop and inspect the workspace.")
 	}
 
-	recoveryPath := filepath.Join(root.Path(), ".uawp", "RECOVERY.json")
 	if _, err := os.Lstat(recoveryPath); err == nil {
 		return finding(CodeRecoveryRequired, "error", "A UAWP recovery journal is present.", "Run recovery diagnostics before any mutation.")
 	} else if !os.IsNotExist(err) {
@@ -78,6 +83,10 @@ func diagnose(root Root) StatusReport {
 			}
 			return finding(CodeIncompleteState, "error", observed, "Restore the required state file before resuming work.")
 		}
+	}
+	checkpoints, err := os.Lstat(filepath.Join(root.Path(), ".uawp", "checkpoints"))
+	if err != nil || !checkpoints.IsDir() || checkpoints.Mode()&os.ModeSymlink != 0 {
+		return finding(CodeIncompleteState, "error", "Required checkpoints directory is missing or unsafe.", "Restore the required checkpoints directory before resuming work.")
 	}
 
 	ownership, err := readOwnership(filepath.Join(root.Path(), ".uawp", "ACTIVE_WORKER.md"))
@@ -100,6 +109,7 @@ func readOwnership(path string) (core.Ownership, error) {
 		return core.Ownership{}, fmt.Errorf("read ownership: %w", err)
 	}
 	fields := make(map[string]string)
+	recognized := map[string]bool{"Status": true, "Worker ID": true, "Agent": true, "Acquired At": true, "Released At": true, "Purpose": true}
 	for _, line := range strings.Split(string(content), "\n") {
 		line = strings.TrimSpace(line)
 		if !strings.HasPrefix(line, "- ") {
@@ -109,7 +119,11 @@ func readOwnership(path string) (core.Ownership, error) {
 		if !ok {
 			continue
 		}
-		fields[strings.TrimSpace(key)] = strings.TrimSpace(value)
+		key = strings.TrimSpace(key)
+		if recognized[key] && fields[key] != "" {
+			return core.Ownership{}, fmt.Errorf("duplicate ownership field %q", key)
+		}
+		fields[key] = strings.TrimSpace(value)
 	}
 	acquired, err := core.ParseTimestamp(fields["Acquired At"])
 	if err != nil {

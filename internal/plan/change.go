@@ -54,6 +54,13 @@ type Plan struct {
 	Operation string `json:"operation"`
 	Workspace string `json:"workspace,omitempty"`
 	changes   []Change
+	inputs    []Input
+}
+
+// Input is a read-only project fact on which an approval depends.
+type Input struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
 }
 
 func New(operation string, input []Change) Plan {
@@ -61,18 +68,26 @@ func New(operation string, input []Change) Plan {
 }
 
 func NewForWorkspace(operation, workspace string, input []Change) Plan {
+	return NewForWorkspaceInputs(operation, workspace, input, nil)
+}
+
+func NewForWorkspaceInputs(operation, workspace string, input []Change, inputs []Input) Plan {
 	changes := cloneChanges(input)
+	inputs = append([]Input(nil), inputs...)
 	sort.Slice(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })
+	sort.Slice(inputs, func(i, j int) bool { return inputs[i].Path < inputs[j].Path })
 	canonical, err := json.Marshal(struct {
 		Operation string   `json:"operation"`
 		Workspace string   `json:"workspace,omitempty"`
 		Changes   []Change `json:"changes"`
-	}{operation, workspace, changes})
+		Inputs    []Input  `json:"inputs"`
+	}{operation, workspace, changes, inputs})
 	if err != nil {
 		panic(fmt.Sprintf("canonical plan encoding failed: %v", err))
 	}
-	return Plan{ID: HashBytes(canonical), Operation: operation, Workspace: workspace, changes: changes}
+	return Plan{ID: HashBytes(canonical), Operation: operation, Workspace: workspace, changes: changes, inputs: inputs}
 }
+func (p Plan) Inputs() []Input { return append([]Input(nil), p.inputs...) }
 
 func (p Plan) Changes() []Change {
 	return cloneChanges(p.changes)

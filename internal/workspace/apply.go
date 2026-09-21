@@ -40,6 +40,9 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 		return ApplyReport{}, fmt.Errorf("plan workspace %q does not match %q", value.Workspace, root.Path())
 	}
 	changes := value.Changes()
+	if err := verifyInputs(root, value.Inputs()); err != nil {
+		return ApplyReport{}, err
+	}
 	if err := verifyBeforeState(root, changes); err != nil {
 		return ApplyReport{}, err
 	}
@@ -111,6 +114,27 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 		report.Applied = append(report.Applied, change.Path)
 	}
 	return report, nil
+}
+
+func verifyInputs(root Root, inputs []plan.Input) error {
+	for _, input := range inputs {
+		path := filepath.Join(root.Path(), input.Path)
+		info, err := os.Lstat(path)
+		if input.SHA256 == plan.MissingSHA256 {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return fmt.Errorf("plan drift: project input %s now exists", input.Path)
+		}
+		if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("plan drift: project input %s changed", input.Path)
+		}
+		content, err := os.ReadFile(path)
+		if err != nil || plan.HashBytes(content) != input.SHA256 {
+			return fmt.Errorf("plan drift: project input %s changed", input.Path)
+		}
+	}
+	return nil
 }
 
 func verifyBeforeState(root Root, changes []plan.Change) error {
@@ -206,7 +230,12 @@ func writeAtomic(target string, content []byte, mode os.FileMode, index int, opt
 	if err := callFailpoint(options, "before-rename", index); err != nil {
 		return err
 	}
-	if err := os.Rename(temporaryPath, target); err != nil {
+	// Link is an atomic create-if-absent publication on supported filesystems.
+	// Unlike Rename it cannot replace a competing file created after preview.
+	if err := os.Link(temporaryPath, target); err != nil {
+		return err
+	}
+	if err := os.Remove(temporaryPath); err != nil {
 		return err
 	}
 	return syncDir(filepath.Dir(target))
@@ -226,7 +255,37 @@ func writeJournal(root Root, journal recoveryJournal) error {
 	}
 	content = append(content, '\n')
 	path := filepath.Join(root.Path(), ".uawp", "RECOVERY.json")
-	return writeAtomic(path, content, 0o600, -1, ApplyOptions{})
+	return writeReplaceAtomic(path, content, 0o600)
+}
+
+// writeReplaceAtomic is reserved for UAWP's transaction journal. Regular
+// planned state files use writeAtomic, which intentionally never replaces.
+func writeReplaceAtomic(target string, content []byte, mode os.FileMode) error {
+	temporary, err := os.CreateTemp(filepath.Dir(target), ".uawp-journal-*")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if _, err := temporary.Write(content); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Chmod(mode); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(temporaryPath, target); err != nil {
+		return err
+	}
+	return syncDir(filepath.Dir(target))
 }
 
 type appliedChange struct {
@@ -237,6 +296,13 @@ type appliedChange struct {
 
 func rollback(root Root, journal recoveryJournal, applied []appliedChange, cause error) (ApplyReport, error) {
 	journal.LastFailure = cause.Error()
+	// Never follow a namespace replacement during rollback. Leave the journal
+	// visible for human recovery instead of risking a path outside the root.
+	namespace := filepath.Join(root.Path(), ".uawp")
+	info, namespaceErr := os.Lstat(namespace)
+	if namespaceErr != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return ApplyReport{}, fmt.Errorf("%w; automatic rollback refused: namespace changed", cause)
+	}
 	journalPath := filepath.Join(root.Path(), ".uawp", "RECOVERY.json")
 	_ = os.Remove(journalPath)
 	for index := len(applied) - 1; index >= 0; index-- {

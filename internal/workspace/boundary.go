@@ -130,8 +130,11 @@ func validPortableSegment(segment string) bool {
 	case "CON", "PRN", "AUX", "NUL":
 		return false
 	}
-	if len(base) == 4 && (strings.HasPrefix(base, "COM") || strings.HasPrefix(base, "LPT")) && base[3] >= '1' && base[3] <= '9' {
-		return false
+	if (strings.HasPrefix(base, "COM") || strings.HasPrefix(base, "LPT")) && len([]rune(base)) == 4 {
+		suffix := []rune(base)[3]
+		if (suffix >= '1' && suffix <= '9') || suffix == '¹' || suffix == '²' || suffix == '³' {
+			return false
+		}
 	}
 	return true
 }

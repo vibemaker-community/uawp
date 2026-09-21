@@ -79,7 +79,7 @@ func TestResolveUAWPRejectsSymlinkAncestors(t *testing.T) {
 
 func TestPortableSegment(t *testing.T) {
 	valid := []string{"manifest.json", "CP-001.md", "上下文.md"}
-	invalid := []string{"", ".", "..", "CON", "com1.txt", "name.", "name ", "a:b", "a/b", "a\\b", "x\x01"}
+	invalid := []string{"", ".", "..", "CON", "com1.txt", "COM¹.txt", "LPT³", "name.", "name ", "a:b", "a/b", "a\\b", "x\x01"}
 	for _, segment := range valid {
 		if !validPortableSegment(segment) {
 			t.Errorf("validPortableSegment(%q) = false", segment)

@@ -138,6 +138,24 @@ func TestApplyRejectsChangedInputFingerprint(t *testing.T) {
 	}
 }
 
+func TestApplyPreservesCompetingFile(t *testing.T) {
+	root := openTempRoot(t)
+	value, _ := PlanInit(root)
+	_, err := Apply(root, value, ApplyOptions{ApprovedPlanID: value.ID, Failpoint: func(stage string, index int) error {
+		if stage == "before-rename" && index == 1 {
+			return os.WriteFile(filepath.Join(root.Path(), ".uawp", "ACTIVE_WORKER.md"), []byte("competitor"), 0o600)
+		}
+		return nil
+	}})
+	if err == nil {
+		t.Fatal("Apply unexpectedly replaced competing file")
+	}
+	content, readErr := os.ReadFile(filepath.Join(root.Path(), ".uawp", "ACTIVE_WORKER.md"))
+	if readErr != nil || string(content) != "competitor" {
+		t.Fatalf("competing content=%q err=%v", content, readErr)
+	}
+}
+
 func openTempRoot(t *testing.T) Root {
 	t.Helper()
 	root, err := OpenRoot(t.TempDir())
