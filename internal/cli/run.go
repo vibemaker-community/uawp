@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/uawp/uawp/internal/adapter"
 	"github.com/uawp/uawp/internal/plan"
 	"github.com/uawp/uawp/internal/workspace"
 )
@@ -29,6 +30,7 @@ type commandOutput struct {
 	Workspace     string                   `json:"workspace"`
 	PlanID        string                   `json:"planID,omitempty"`
 	Findings      []workspace.StatusReport `json:"findings"`
+	Adapters      []adapter.Resolution     `json:"adapters,omitempty"`
 	Lifecycle     any                      `json:"lifecycle,omitempty"`
 	Metadata      plan.Metadata            `json:"metadata,omitempty"`
 	Preview       []previewChange          `json:"preview,omitempty"`
@@ -54,6 +56,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "init":
 		return runInit(args[1:], stdout, stderr)
+	case "adapter":
+		return runAdapter(args[1:], stdout, stderr)
 	case "status", "doctor":
 		return runDiagnostic(args[0], args[1:], stdout, stderr)
 	case "resume":
@@ -126,6 +130,20 @@ func runDiagnostic(command string, args []string, stdout, stderr io.Writer) int 
 		report = workspace.Doctor(root)
 	}
 	result := commandOutput{SchemaVersion: "1", Command: command, Workspace: root.Path(), Findings: []workspace.StatusReport{report}, NextAction: report.NextAction}
+	if report.Code == workspace.CodeReady || report.Code == workspace.CodeActiveOwner {
+		ids, idsErr := workspace.ConfiguredAdapterIDs(root)
+		if idsErr != nil {
+			fmt.Fprintf(stderr, "adapter diagnostics failed: %v\n", idsErr)
+			return exitInvalidState
+		}
+		result.Adapters, err = workspace.ResolveAdapters(root, ids, adapter.RuntimeFacts{})
+		if err != nil {
+			return writeAdapterError(stderr, err)
+		}
+		if next := adapterNextAction(result.Adapters); len(result.Adapters) > 0 && next != "No adapter action is required." {
+			result.NextAction = next
+		}
+	}
 	writeOutput(stdout, format, result)
 	switch report.Code {
 	case workspace.CodeUnknownNamespace:
@@ -172,6 +190,12 @@ func writeOutput(writer io.Writer, format string, result commandOutput) {
 	for _, finding := range result.Findings {
 		fmt.Fprintf(writer, "  %s: %s\n", finding.Code, finding.Observed)
 	}
+	for _, resolution := range result.Adapters {
+		fmt.Fprintf(writer, "  adapter %s: entry=%s mode=%s confidence=%s health=%s\n", resolution.Provider, resolution.Route.Path, resolution.Route.Mode, resolution.Confidence, resolution.Health)
+		for _, finding := range resolution.Findings {
+			fmt.Fprintf(writer, "    %s: %s\n", finding.Code, finding.Message)
+		}
+	}
 	fmt.Fprintln(writer, "planned:")
 	if result.PlanID != "" {
 		fmt.Fprintf(writer, "  plan ID: %s\n", result.PlanID)
@@ -203,6 +227,6 @@ func parseApprovalToken(token string) (time.Time, string, error) {
 }
 
 func usage(stderr io.Writer) int {
-	fmt.Fprintln(stderr, "usage: uawp <version|init|status|doctor|resume|acquire|release|sync|checkpoint|handoff|recover>")
+	fmt.Fprintln(stderr, "usage: uawp <version|init|adapter|status|doctor|resume|acquire|release|sync|checkpoint|handoff|recover>")
 	return exitUsage
 }

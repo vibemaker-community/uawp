@@ -35,6 +35,27 @@ func ResolveAdapters(root Root, ids []string, facts adapter.RuntimeFacts) ([]ada
 	return out, nil
 }
 
+// ConfiguredAdapterIDs returns the unique, persisted consumers of native
+// integration artifacts. It reports configuration, not live provider use.
+func ConfiguredAdapterIDs(root Root) ([]string, error) {
+	manifest, _, err := readAdapterManifest(root)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var ids []string
+	for _, artifact := range manifest.Integrations {
+		for _, id := range artifact.Consumers {
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+	}
+	sort.Strings(ids)
+	return ids, nil
+}
+
 func PlanAdapterAddAt(root Root, id string, facts adapter.RuntimeFacts, acknowledged []string, at time.Time) (plan.Plan, adapter.Resolution, error) {
 	a, err := adapter.Lookup(id)
 	if err != nil {
@@ -100,8 +121,14 @@ func PlanAdapterAddAt(root Root, id string, facts adapter.RuntimeFacts, acknowle
 		}
 		outsideHash = meta.OutsideSHA256
 	case core.Import:
+		if resolution.Route.Create && hasFinding(resolution.Findings, "CLAUDE_CREATION_CHANGES_SELECTION") {
+			after, _, err = adapter.UpsertImport(after, "AGENTS.md")
+			if err != nil {
+				return plan.Plan{}, resolution, err
+			}
+		}
 		var changed bool
-		after, changed, err = adapter.UpsertImport(before, resolution.Route.Target)
+		after, changed, err = adapter.UpsertImport(after, resolution.Route.Target)
 		_ = changed
 		if err != nil {
 			return plan.Plan{}, resolution, err
@@ -151,7 +178,9 @@ func PlanAdapterRemoveAt(root Root, id string, facts adapter.RuntimeFacts, at ti
 		before := fact.Content
 		remaining := removeConsumer(art.Consumers, id)
 		after := before
-		if art.Mode == core.ManagedBlock {
+		if len(remaining) == 0 && art.CreatedFile && plan.HashBytes(before) == art.ArtifactSHA256 {
+			after = nil
+		} else if art.Mode == core.ManagedBlock {
 			after, err = adapter.RemoveManagedBlock(before, adapter.BlockSpec{ArtifactID: art.ID, Target: art.Target, Consumers: art.Consumers, Body: adapter.BridgeBody()})
 		} else if art.Mode == core.Import {
 			after, _, err = adapter.RemoveImport(before, art.Target)
@@ -306,6 +335,14 @@ func acknowledgesAll(findings []adapter.Finding, ack []string) bool {
 		}
 	}
 	return true
+}
+func hasFinding(findings []adapter.Finding, code string) bool {
+	for _, finding := range findings {
+		if finding.Code == code {
+			return true
+		}
+	}
+	return false
 }
 func nativeChange(path string, missing bool, before, after []byte, mode uint32) plan.Change {
 	if missing {

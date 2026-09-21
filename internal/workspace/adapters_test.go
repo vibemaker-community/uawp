@@ -112,8 +112,13 @@ func TestAdapterConditionalRouteRequiresAcknowledgement(t *testing.T) {
 	if _, _, err := PlanAdapterAddAt(r, "claude-code", facts, nil, time.Unix(1, 0)); err == nil {
 		t.Fatal("accepted conditional route")
 	}
-	if _, _, err := PlanAdapterAddAt(r, "claude-code", facts, []string{"CLAUDE_CREATION_CHANGES_SELECTION"}, time.Unix(1, 0)); err != nil {
+	p, _, err := PlanAdapterAddAt(r, "claude-code", facts, []string{"CLAUDE_CREATION_CHANGES_SELECTION"}, time.Unix(1, 0))
+	if err != nil {
 		t.Fatal(err)
+	}
+	content := p.Changes()[0].Content()
+	if !bytes.Contains(content, []byte("@AGENTS.md")) || !bytes.Contains(content, []byte("@.uawp/INSTRUCTIONS.md")) {
+		t.Fatalf("conditional preservation content=%q", content)
 	}
 }
 
