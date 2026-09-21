@@ -43,6 +43,9 @@ func TestBrownfieldInitPreservesProtectedFiles(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, ".uawp", "manifest.json")); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := os.Stat(filepath.Join(dir, ".uawp", "INSTRUCTIONS.md")); err != nil {
+		t.Fatal(err)
+	}
 	assertFixture(t, dir, manifest)
 	repeat := runInit(t, dir, "")
 	if len(repeat.Changes) != 0 || repeat.Mutated {

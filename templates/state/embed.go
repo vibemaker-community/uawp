@@ -10,3 +10,6 @@ var ActiveWorker []byte
 
 //go:embed DECISIONS.md
 var Decisions []byte
+
+//go:embed INSTRUCTIONS.md
+var Instructions []byte

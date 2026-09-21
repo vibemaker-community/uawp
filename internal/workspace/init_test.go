@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,8 +21,8 @@ func TestPlanInitAbsentNamespace(t *testing.T) {
 		t.Fatal(err)
 	}
 	changes := value.Changes()
-	if len(changes) != 6 {
-		t.Fatalf("len(changes) = %d, want 6", len(changes))
+	if len(changes) != 7 {
+		t.Fatalf("len(changes) = %d, want 7", len(changes))
 	}
 	want := map[string]plan.ChangeKind{
 		".uawp":                  plan.CreateDir,
@@ -30,6 +31,7 @@ func TestPlanInitAbsentNamespace(t *testing.T) {
 		".uawp/CONTEXT.md":       plan.CreateFile,
 		".uawp/ACTIVE_WORKER.md": plan.CreateFile,
 		".uawp/DECISIONS.md":     plan.CreateFile,
+		".uawp/INSTRUCTIONS.md":  plan.CreateFile,
 	}
 	for _, change := range changes {
 		kind, ok := want[change.Path]
@@ -40,6 +42,33 @@ func TestPlanInitAbsentNamespace(t *testing.T) {
 	}
 	if len(want) != 0 {
 		t.Fatalf("missing changes: %#v", want)
+	}
+}
+
+func TestPlanInitIncludesAgentNeutralInstructions(t *testing.T) {
+	root, _ := OpenRoot(t.TempDir())
+	value, err := planInitAt(root, time.Date(2026, 9, 22, 10, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var content []byte
+	for _, change := range value.Changes() {
+		if change.Path == ".uawp/INSTRUCTIONS.md" {
+			content = change.Content()
+		}
+	}
+	if len(content) == 0 {
+		t.Fatal("missing .uawp/INSTRUCTIONS.md")
+	}
+	for _, required := range []string{"ACTIVE_WORKER.md", "RESUME_WORK", "CONTEXT_SYNC", "CREATE_CHECKPOINT", "PAUSE_AND_HANDOFF"} {
+		if !bytes.Contains(content, []byte(required)) {
+			t.Errorf("instructions missing %s", required)
+		}
+	}
+	for _, forbidden := range []string{"Codex", "Claude", "WorkBuddy", "AGENTS.md", "CLAUDE.md", "CODEBUDDY.md"} {
+		if bytes.Contains(content, []byte(forbidden)) {
+			t.Errorf("provider/native leak: %s", forbidden)
+		}
 	}
 }
 

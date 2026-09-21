@@ -8,6 +8,7 @@ UAWP owns only `.uawp/`:
 ├── CONTEXT.md
 ├── ACTIVE_WORKER.md
 ├── DECISIONS.md
+├── INSTRUCTIONS.md
 └── checkpoints/
 ```
 
@@ -16,7 +17,9 @@ supported v1 semantic `stateVersion`. Unknown keys, duplicate keys, trailing
 JSON, and unsupported major versions are rejected.
 
 `CONTEXT.md` stores current effective workspace state. `DECISIONS.md` stores
-durable decisions. `checkpoints/` is reserved for milestone snapshots.
+durable decisions. `INSTRUCTIONS.md` is the canonical agent-neutral entry into
+the UAWP lifecycle; native provider files may only bridge to this shared
+source. `checkpoints/` is reserved for milestone snapshots.
 
 `ACTIVE_WORKER.md` represents persistent ownership. It permits exactly two
 states:

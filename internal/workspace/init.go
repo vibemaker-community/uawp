@@ -59,6 +59,7 @@ func planInitAt(root Root, now time.Time) (plan.Plan, error) {
 		plan.NewFile(".uawp/CONTEXT.md", 0o600, plan.MissingSHA256, state.Context),
 		plan.NewFile(".uawp/ACTIVE_WORKER.md", 0o600, plan.MissingSHA256, activeWorker),
 		plan.NewFile(".uawp/DECISIONS.md", 0o600, plan.MissingSHA256, state.Decisions),
+		plan.NewFile(".uawp/INSTRUCTIONS.md", 0o600, plan.MissingSHA256, state.Instructions),
 	}
 	inputs, err := ProjectInputs(root)
 	if err != nil {

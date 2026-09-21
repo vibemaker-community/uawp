@@ -72,7 +72,7 @@ func (r Root) ResolveUAWP(relative string) (string, error) {
 func allowedUAWPPath(segments []string) bool {
 	if len(segments) == 1 {
 		switch segments[0] {
-		case "manifest.json", "CONTEXT.md", "ACTIVE_WORKER.md", "DECISIONS.md", "RECOVERY.json", "checkpoints":
+		case "manifest.json", "CONTEXT.md", "ACTIVE_WORKER.md", "DECISIONS.md", "INSTRUCTIONS.md", "RECOVERY.json", "checkpoints":
 			return true
 		}
 	}

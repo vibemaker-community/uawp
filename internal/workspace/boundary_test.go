@@ -44,6 +44,20 @@ func TestResolveUAWPRejectsEscape(t *testing.T) {
 	}
 }
 
+func TestResolveUAWPAllowsCanonicalInstructions(t *testing.T) {
+	root, err := OpenRoot(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := root.ResolveUAWP("INSTRUCTIONS.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Base(got) != "INSTRUCTIONS.md" {
+		t.Fatalf("resolved %q", got)
+	}
+}
+
 func TestResolveUAWPRejectsSymlinkAncestors(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlink creation commonly requires elevated Windows privileges")
