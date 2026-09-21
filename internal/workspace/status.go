@@ -104,47 +104,13 @@ func finding(code FindingCode, severity, observed, next string) StatusReport {
 }
 
 func readOwnership(path string) (core.Ownership, error) {
-	content, err := os.ReadFile(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return core.Ownership{}, fmt.Errorf("read ownership: %w", err)
 	}
-	fields := make(map[string]string)
-	recognized := map[string]bool{"Status": true, "Worker ID": true, "Agent": true, "Acquired At": true, "Released At": true, "Purpose": true}
-	for _, line := range strings.Split(string(content), "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "- ") {
-			continue
-		}
-		key, value, ok := strings.Cut(strings.TrimPrefix(line, "- "), ":")
-		if !ok {
-			continue
-		}
-		key = strings.TrimSpace(key)
-		if recognized[key] && fields[key] != "" {
-			return core.Ownership{}, fmt.Errorf("duplicate ownership field %q", key)
-		}
-		fields[key] = strings.TrimSpace(value)
-	}
-	acquired, err := core.ParseTimestamp(fields["Acquired At"])
+	defer file.Close()
+	ownership, err := core.DecodeOwnership(file)
 	if err != nil {
-		return core.Ownership{}, fmt.Errorf("invalid ownership acquisition time: %w", err)
-	}
-	ownership := core.Ownership{
-		Status:     core.OwnershipStatus(fields["Status"]),
-		WorkerID:   fields["Worker ID"],
-		Agent:      fields["Agent"],
-		AcquiredAt: acquired,
-		Purpose:    fields["Purpose"],
-	}
-	releasedValue := fields["Released At"]
-	if releasedValue != "" && !strings.EqualFold(releasedValue, "none") {
-		released, err := core.ParseTimestamp(releasedValue)
-		if err != nil {
-			return core.Ownership{}, fmt.Errorf("invalid ownership release time: %w", err)
-		}
-		ownership.ReleasedAt = &released
-	}
-	if err := core.ValidateOwnership(ownership); err != nil {
 		return core.Ownership{}, fmt.Errorf("invalid ownership state: %w", err)
 	}
 	return ownership, nil
