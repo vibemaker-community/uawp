@@ -1,0 +1,10 @@
+{
+  "files": [
+    {"path": "AGENTS.md", "mode": 420, "sha256": "c9f13f3618dfc1b5875f60369ddbee631265065f19aa022d7b2bf1f73f137496"},
+    {"path": "CLAUDE.md", "mode": 420, "sha256": "8e521cde59bea546f359ebccc1af7af8b19427e06fadb8cf6d80a41ee8aab6f5"},
+    {"path": "context.md", "mode": 420, "sha256": "3a3f11c5e606b1fa7abb61eb4363bdde1d4f2811224c97e77e99ccf6d3b2fe03"},
+    {"path": "src/example.txt", "mode": 292, "sha256": "a7814472c4db8f59ef332601c9745fcf7c7fdf1d52804d758abc9202ab267280"},
+    {"path": "资料/说明.txt", "mode": 420, "sha256": "9dc3159a896a8047691906cc27dda3450d9f2585756b283bf8ce79ce1d6d2712"},
+    {"path": "empty.bin", "mode": 420, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+  ]
+}

@@ -1,0 +1,47 @@
+package e2e
+
+import (
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/uawp/uawp/internal/core"
+	"github.com/uawp/uawp/internal/workspace"
+)
+
+func FuzzDecodeManifest(f *testing.F) {
+	for _, seed := range []string{
+		`{"protocol":"UAWP","stateVersion":"1.0.0"}`,
+		`{"protocol":"UAWP","stateVersion":"1.0.0"} {}`,
+		`{"protocol":"UAWP","protocol":"other","stateVersion":"1.0.0"}`,
+		"",
+		"{",
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, input string) {
+		_, _ = core.DecodeManifest(strings.NewReader(input))
+	})
+}
+
+func FuzzResolveUAWP(f *testing.F) {
+	for _, seed := range []string{
+		"manifest.json", "../escape", "checkpoints/CP-001.md", "a\\b", "NUL", "说明.md", "x\x00y", strings.Repeat("a", 4096),
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, relative string) {
+		root, err := workspace.OpenRoot(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		resolved, err := root.ResolveUAWP(relative)
+		if err != nil {
+			return
+		}
+		prefix := filepath.Join(root.Path(), ".uawp") + string(filepath.Separator)
+		if resolved != filepath.Join(root.Path(), ".uawp") && !strings.HasPrefix(resolved, prefix) {
+			t.Fatalf("accepted path escapes workspace: relative=%q resolved=%q", relative, resolved)
+		}
+	})
+}
