@@ -52,20 +52,26 @@ func (c Change) Content() []byte {
 type Plan struct {
 	ID        string `json:"id"`
 	Operation string `json:"operation"`
+	Workspace string `json:"workspace,omitempty"`
 	changes   []Change
 }
 
 func New(operation string, input []Change) Plan {
+	return NewForWorkspace(operation, "", input)
+}
+
+func NewForWorkspace(operation, workspace string, input []Change) Plan {
 	changes := cloneChanges(input)
 	sort.Slice(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })
 	canonical, err := json.Marshal(struct {
 		Operation string   `json:"operation"`
+		Workspace string   `json:"workspace,omitempty"`
 		Changes   []Change `json:"changes"`
-	}{operation, changes})
+	}{operation, workspace, changes})
 	if err != nil {
 		panic(fmt.Sprintf("canonical plan encoding failed: %v", err))
 	}
-	return Plan{ID: HashBytes(canonical), Operation: operation, changes: changes}
+	return Plan{ID: HashBytes(canonical), Operation: operation, Workspace: workspace, changes: changes}
 }
 
 func (p Plan) Changes() []Change {
