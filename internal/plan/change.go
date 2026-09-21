@@ -27,6 +27,7 @@ type Change struct {
 	AfterSHA256  string     `json:"afterSHA256"`
 	Mode         uint32     `json:"mode"`
 	Size         int64      `json:"size"`
+	Sequence     int        `json:"sequence"`
 	content      []byte
 }
 
@@ -49,6 +50,8 @@ func NewFile(path string, mode uint32, before string, content []byte) Change {
 func NewUpdateFile(path string, mode uint32, before string, content []byte) Change {
 	return Change{Kind: UpdateFile, Path: path, BeforeSHA256: before, AfterSHA256: HashBytes(content), Mode: mode, Size: int64(len(content)), content: append([]byte(nil), content...)}
 }
+
+func (c Change) WithSequence(sequence int) Change { c.Sequence = sequence; return c }
 
 func (c Change) Content() []byte {
 	return append([]byte(nil), c.content...)
@@ -89,8 +92,18 @@ func NewForWorkspaceInputs(operation, workspace string, input []Change, inputs [
 
 func NewForWorkspaceInputsMetadata(operation, workspace string, input []Change, inputs []Input, metadata Metadata) Plan {
 	changes := cloneChanges(input)
+	explicitSequence := false
+	for index := range changes {
+		if changes[index].Sequence != 0 {
+			explicitSequence = true
+		}
+	}
 	inputs = append([]Input(nil), inputs...)
-	sort.Slice(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })
+	if explicitSequence {
+		sort.Slice(changes, func(i, j int) bool { return changes[i].Sequence < changes[j].Sequence })
+	} else {
+		sort.Slice(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })
+	}
 	sort.Slice(inputs, func(i, j int) bool { return inputs[i].Path < inputs[j].Path })
 	canonical, err := json.Marshal(struct {
 		Operation string   `json:"operation"`
