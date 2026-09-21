@@ -39,7 +39,7 @@ func TestManifestIntegrationRoundTripCanonicalizesCopies(t *testing.T) {
 	manifest := Manifest{
 		Protocol: ProtocolName, StateVersion: "1.0.0",
 		Integrations: []IntegrationArtifact{
-			{ID: "z-entry", Path: "CLAUDE.md", Mode: Import, Target: ".uawp/INSTRUCTIONS.md", Consumers: []string{"claude", "alpha"}, CreatedFile: true, ArtifactSHA256: strings.Repeat("a", 64)},
+			{ID: "z-entry", Path: "CLAUDE.md", Mode: Import, Target: ".uawp/INSTRUCTIONS.md", Consumers: []string{"claude", "alpha"}, CreatedFile: true, Inserted: true, ArtifactSHA256: strings.Repeat("a", 64)},
 			{ID: "a-entry", Path: "AGENTS.md", Mode: ManagedBlock, Target: ".uawp/INSTRUCTIONS.md", Consumers: []string{"workbuddy", "codex"}, ArtifactSHA256: strings.Repeat("b", 64), OutsideContentSHA256: strings.Repeat("c", 64)},
 		},
 	}
@@ -58,7 +58,7 @@ func TestManifestIntegrationRoundTripCanonicalizesCopies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Integrations[0].ID != "a-entry" || !reflect.DeepEqual(got.Integrations[0].Consumers, []string{"codex", "workbuddy"}) {
+	if got.Integrations[0].ID != "a-entry" || !reflect.DeepEqual(got.Integrations[0].Consumers, []string{"codex", "workbuddy"}) || !got.Integrations[1].Inserted {
 		t.Fatalf("decoded = %#v", got)
 	}
 }
@@ -76,6 +76,8 @@ func TestManifestIntegrationValidation(t *testing.T) {
 		{"empty consumer", strings.Replace(valid, `"codex"`, `""`, 1)},
 		{"duplicate consumer", strings.Replace(valid, `["codex"]`, `["codex","codex"]`, 1)},
 		{"duplicate artifact id", strings.Replace(valid, `]}`, `,{"id":"entry","path":"CLAUDE.md","mode":"IMPORT","target":".uawp/INSTRUCTIONS.md","consumers":["claude"],"createdFile":false,"artifactSHA256":"`+strings.Repeat("b", 64)+`"}]}`, 1)},
+		{"consumer on multiple artifacts", strings.Replace(valid, `]}`, `,{"id":"other","path":"CLAUDE.md","mode":"IMPORT","target":".uawp/INSTRUCTIONS.md","consumers":["codex"],"createdFile":false,"artifactSHA256":"`+strings.Repeat("b", 64)+`"}]}`, 1)},
+		{"facts for unknown consumer", strings.Replace(valid, `"createdFile":false`, `"consumerFacts":{"claude":{"providerVersion":"2.1.277"}},"createdFile":false`, 1)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

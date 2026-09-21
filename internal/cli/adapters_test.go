@@ -106,3 +106,25 @@ func TestAdapterListTextAndStatusAreReadOnly(t *testing.T) {
 		t.Fatalf("diagnostics mutated entry: %v", err)
 	}
 }
+
+func TestStatusAndDoctorReportCorruptAdapterBridge(t *testing.T) {
+	dir := initializedCLIWorkspace(t)
+	args := []string{"adapter", "add", "codex", "--workspace", dir, "--format", "json"}
+	token := decodePlanToken(t, runCLI(t, args, exitApprovalRequired))
+	runCLI(t, append(args, "--approve", token), exitOK)
+	path := filepath.Join(dir, "AGENTS.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content = bytes.Replace(content, []byte("UAWP:END"), []byte("UAWP:BROKEN"), 1)
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []string{"status", "doctor"} {
+		raw := runCLI(t, []string{command, "--workspace", dir, "--format", "json"}, exitInvalidState)
+		if !bytes.Contains(raw, []byte("INTEGRATION_DRIFT")) {
+			t.Fatalf("%s output=%s", command, raw)
+		}
+	}
+}

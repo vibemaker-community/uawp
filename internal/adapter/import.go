@@ -10,7 +10,11 @@ func UpsertImport(content []byte, target string) ([]byte, bool, error) {
 	if target == "" || strings.ContainsAny(target, "\r\n") {
 		return nil, false, fmt.Errorf("invalid import target")
 	}
-	if importLine(content, target) >= 0 {
+	count, first := importLines(content, target)
+	if count > 1 {
+		return nil, false, fmt.Errorf("duplicate import for %s", target)
+	}
+	if first >= 0 {
 		return append([]byte(nil), content...), false, nil
 	}
 	nl := []byte("\n")
@@ -26,7 +30,10 @@ func UpsertImport(content []byte, target string) ([]byte, bool, error) {
 }
 
 func RemoveImport(content []byte, target string) ([]byte, bool, error) {
-	start := importLine(content, target)
+	count, start := importLines(content, target)
+	if count > 1 {
+		return nil, false, fmt.Errorf("duplicate import for %s", target)
+	}
 	if start < 0 {
 		return append([]byte(nil), content...), false, nil
 	}
@@ -50,17 +57,26 @@ func RemoveImport(content []byte, target string) ([]byte, bool, error) {
 }
 
 func importLine(content []byte, target string) int {
+	_, first := importLines(content, target)
+	return first
+}
+
+func importLines(content []byte, target string) (int, int) {
 	lines := bytes.SplitAfter(content, []byte("\n"))
 	offset := 0
 	fenced := false
+	count, first := 0, -1
 	for _, raw := range lines {
 		line := strings.TrimSuffix(strings.TrimSuffix(string(raw), "\n"), "\r")
 		if strings.HasPrefix(strings.TrimSpace(line), "```") {
 			fenced = !fenced
 		} else if !fenced && line == "@"+target {
-			return offset
+			count++
+			if first < 0 {
+				first = offset
+			}
 		}
 		offset += len(raw)
 	}
-	return -1
+	return count, first
 }

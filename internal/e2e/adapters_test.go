@@ -116,8 +116,13 @@ func TestAdapterClaudeImportAndWorkBuddyEntryDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 	stdout, stderr, code := runAdapterCLI(t, "status", "--workspace", dir, "--format", "json")
-	if code != 0 || !bytes.Contains(stdout, []byte("ENTRY_DRIFT")) {
+	if code != 4 || !bytes.Contains(stdout, []byte("ENTRY_DRIFT")) {
 		t.Fatalf("status code=%d stdout=%s stderr=%s", code, stdout, stderr)
+	}
+	applyAdapterCLI(t, dir, "workbuddy")
+	stdout, stderr, code = runAdapterCLI(t, "status", "--workspace", dir, "--format", "json")
+	if code != 0 || bytes.Contains(stdout, []byte("ENTRY_DRIFT")) {
+		t.Fatalf("post-migration status code=%d stdout=%s stderr=%s", code, stdout, stderr)
 	}
 }
 

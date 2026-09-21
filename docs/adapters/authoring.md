@@ -38,4 +38,3 @@ preview drift, and interrupted publication.
 Never claim compatibility from observed convenience alone. A new capability
 requires a current official source, a recorded verification date and version
 scope, a reviewed resolution matrix, tests, and user documentation.
-

@@ -30,7 +30,15 @@
             "uniqueItems": true,
             "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }
           },
+          "consumerFacts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          },
           "createdFile": { "type": "boolean" },
+          "inserted": { "type": "boolean" },
           "artifactSHA256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "outsideContentSHA256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
         }

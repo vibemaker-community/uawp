@@ -17,6 +17,7 @@ var launchAdapterIDs = []string{"claude-code", "codex", "workbuddy"}
 type adapterFlags struct {
 	workspace, format, approval, version                       string
 	instructionFiles, directAgentsSupport, providerEnvironment string
+	fallbackFilenames, workingDirectory                        string
 	acknowledged                                               []string
 }
 
@@ -99,6 +100,15 @@ func runAdapter(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "apply failed: %v\n", err)
 		return exitInvalidState
 	}
+	if action == "add" {
+		err = workspace.VerifyAdapterRoute(root, id, facts)
+	} else {
+		err = workspace.VerifyAdapterRemoved(root, id)
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "post-apply adapter verification failed: %v\n", err)
+		return exitInvalidState
+	}
 	result.Mutated = len(report.Applied) > 0
 	result.NextAction = "Adapter operation applied and verified."
 	writeOutput(stdout, f.format, result)
@@ -117,11 +127,13 @@ func parseAdapterFlags(action string, args []string, stderr io.Writer) (adapterF
 	set.StringVar(&f.instructionFiles, "instruction-files", "", "observed instructionFiles setting")
 	set.StringVar(&f.directAgentsSupport, "direct-agents-support", "", "observed direct AGENTS.md support")
 	set.StringVar(&f.providerEnvironment, "provider-environment", "", "observed provider environment")
+	set.StringVar(&f.fallbackFilenames, "fallback-filenames", "", "observed Codex fallback filenames")
+	set.StringVar(&f.workingDirectory, "working-directory", "", "observed Codex working directory")
 	set.Var(&ack, "acknowledge", "finding code acknowledged after review")
 	if set.Parse(args) != nil || set.NArg() != 0 || f.workspace == "" || (f.format != "text" && f.format != "json") {
 		return f, false
 	}
-	if action == "list" && (f.approval != "" || f.version != "" || f.instructionFiles != "" || f.directAgentsSupport != "" || f.providerEnvironment != "" || len(ack) > 0) {
+	if action == "list" && (f.approval != "" || f.version != "" || f.instructionFiles != "" || f.directAgentsSupport != "" || f.providerEnvironment != "" || f.fallbackFilenames != "" || f.workingDirectory != "" || len(ack) > 0) {
 		fmt.Fprintln(stderr, "adapter list accepts only --workspace and --format")
 		return f, false
 	}
@@ -139,6 +151,12 @@ func adapterFacts(id string, f adapterFlags) adapter.RuntimeFacts {
 	}
 	if f.providerEnvironment != "" {
 		options["providerEnvironment"] = f.providerEnvironment
+	}
+	if f.fallbackFilenames != "" {
+		options["fallbackFilenames"] = f.fallbackFilenames
+	}
+	if f.workingDirectory != "" {
+		options["workingDirectory"] = f.workingDirectory
 	}
 	return adapter.RuntimeFacts{Versions: map[string]string{id: f.version}, Options: map[string]map[string]string{id: options}}
 }

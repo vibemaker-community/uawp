@@ -9,7 +9,16 @@ import (
 	"time"
 
 	"github.com/uawp/uawp/internal/adapter"
+	"github.com/uawp/uawp/internal/core"
 )
+
+type directTestAdapter struct{}
+
+func (directTestAdapter) ID() string                 { return "direct-test" }
+func (directTestAdapter) Evidence() adapter.Evidence { return adapter.Evidence{} }
+func (directTestAdapter) Resolve(adapter.Snapshot) adapter.Resolution {
+	return adapter.Resolution{Provider: "direct-test", Confidence: adapter.Verified, Health: "HEALTHY", Route: adapter.Route{Path: ".uawp/INSTRUCTIONS.md", Mode: core.Direct, Target: ".uawp/INSTRUCTIONS.md"}}
+}
 
 func adapterRoot(t *testing.T) Root {
 	t.Helper()
@@ -198,5 +207,146 @@ func TestResolveAdaptersReportsRegisteredEntryDrift(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("findings=%#v", resolutions[0].Findings)
+	}
+}
+
+func TestAdapterReusesButDoesNotOwnExistingImport(t *testing.T) {
+	r := adapterRoot(t)
+	path := filepath.Join(r.Path(), "CLAUDE.md")
+	mustWrite(t, path, "# Project\n@.uawp/INSTRUCTIONS.md\n")
+	before, _ := os.ReadFile(path)
+	addAdapter(t, r, "claude-code")
+	manifest, _, err := readAdapterManifest(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Integrations) != 1 || manifest.Integrations[0].Inserted {
+		t.Fatalf("existing import claimed as inserted: %#v", manifest.Integrations)
+	}
+	removeAdapterPlan(t, r, "claude-code")
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatalf("project import changed: before=%q after=%q err=%v", before, after, err)
+	}
+}
+
+func TestAdapterRejectsDuplicateImports(t *testing.T) {
+	r := adapterRoot(t)
+	mustWrite(t, filepath.Join(r.Path(), "CLAUDE.md"), "@.uawp/INSTRUCTIONS.md\n@.uawp/INSTRUCTIONS.md\n")
+	if _, _, err := PlanAdapterAddAt(r, "claude-code", adapter.RuntimeFacts{}, nil, time.Unix(1, 0)); err == nil {
+		t.Fatal("accepted duplicate imports")
+	}
+}
+
+func TestAdapterAddMigratesConsumerToEffectiveEntry(t *testing.T) {
+	r := adapterRoot(t)
+	addAdapter(t, r, "codex")
+	addAdapter(t, r, "workbuddy")
+	mustWrite(t, filepath.Join(r.Path(), "CODEBUDDY.md"), "# Preferred\n")
+	p, resolution, err := PlanAdapterAddAt(r, "workbuddy", adapter.RuntimeFacts{}, nil, time.Unix(3, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolution.Route.Path != "CODEBUDDY.md" || len(p.Changes()) != 3 {
+		t.Fatalf("resolution=%#v changes=%#v", resolution, p.Changes())
+	}
+	if _, err = Apply(r, p, ApplyOptions{ApprovedPlanID: p.ID}); err != nil {
+		t.Fatal(err)
+	}
+	agents, _ := os.ReadFile(filepath.Join(r.Path(), "AGENTS.md"))
+	codebuddy, _ := os.ReadFile(filepath.Join(r.Path(), "CODEBUDDY.md"))
+	if !bytes.Contains(agents, []byte("consumers=codex")) || bytes.Contains(agents, []byte("workbuddy")) || !bytes.Contains(codebuddy, []byte("consumers=workbuddy")) {
+		t.Fatalf("AGENTS=%q CODEBUDDY=%q", agents, codebuddy)
+	}
+	manifest, _, _ := readAdapterManifest(r)
+	if got := len(consumerArtifactIndexes(manifest.Integrations, "workbuddy")); got != 1 {
+		t.Fatalf("workbuddy registrations=%d", got)
+	}
+}
+
+func TestAdapterVerificationAllowsOutsideManagedBlockEdits(t *testing.T) {
+	r := adapterRoot(t)
+	addAdapter(t, r, "codex")
+	path := filepath.Join(r.Path(), "AGENTS.md")
+	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	_, _ = f.WriteString("\n# project addition\n")
+	_ = f.Close()
+	p, _, err := PlanAdapterAddAt(r, "codex", adapter.RuntimeFacts{}, nil, time.Unix(2, 0))
+	if err != nil || len(p.Changes()) != 0 {
+		t.Fatalf("idempotent plan=%#v err=%v", p.Changes(), err)
+	}
+	if err := VerifyAdapterRoute(r, "codex", adapter.RuntimeFacts{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAdapterDiagnosticsDetectCorruptRegisteredBlock(t *testing.T) {
+	r := adapterRoot(t)
+	addAdapter(t, r, "codex")
+	path := filepath.Join(r.Path(), "AGENTS.md")
+	content, _ := os.ReadFile(path)
+	content = bytes.Replace(content, []byte("UAWP:END"), []byte("UAWP:BROKEN"), 1)
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	resolutions, err := ResolveAdapters(r, []string{"codex"}, adapter.RuntimeFacts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolutions[0].Health != "INTEGRATION_DRIFT" || !hasFinding(resolutions[0].Findings, "INTEGRATION_DRIFT") {
+		t.Fatalf("resolution=%#v", resolutions[0])
+	}
+}
+
+func TestAdapterDiagnosticsReusePersistedRuntimeFacts(t *testing.T) {
+	r := adapterRoot(t)
+	addAdapter(t, r, "codex")
+	facts := adapter.RuntimeFacts{Versions: map[string]string{"claude-code": "2.1.277"}, Options: map[string]map[string]string{"claude-code": {"directAgentsSupport": "true"}}}
+	p, _, err := PlanAdapterAddAt(r, "claude-code", facts, nil, time.Unix(2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = Apply(r, p, ApplyOptions{ApprovedPlanID: p.ID}); err != nil {
+		t.Fatal(err)
+	}
+	resolutions, err := ResolveAdapters(r, []string{"claude-code"}, adapter.RuntimeFacts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolutions[0].Health != "HEALTHY" || resolutions[0].Route.Path != "AGENTS.md" {
+		t.Fatalf("resolution=%#v", resolutions[0])
+	}
+}
+
+func TestDirectAdapterLifecycleDoesNotWriteNativeEntry(t *testing.T) {
+	r := adapterRoot(t)
+	instructionsPath := filepath.Join(r.Path(), ".uawp", "INSTRUCTIONS.md")
+	before, err := os.ReadFile(instructionsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, resolution, err := planAdapterAddAt(r, "direct-test", directTestAdapter{}, adapter.RuntimeFacts{}, nil, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolution.Route.Mode != core.Direct || len(p.Changes()) != 1 || p.Changes()[0].Path != ".uawp/manifest.json" {
+		t.Fatalf("resolution=%#v changes=%#v", resolution, p.Changes())
+	}
+	if _, err = Apply(r, p, ApplyOptions{ApprovedPlanID: p.ID}); err != nil {
+		t.Fatal(err)
+	}
+	remove, err := PlanAdapterRemoveAt(r, "direct-test", adapter.RuntimeFacts{}, time.Unix(2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remove.Changes()) != 1 || remove.Changes()[0].Path != ".uawp/manifest.json" {
+		t.Fatalf("remove changes=%#v", remove.Changes())
+	}
+	if _, err = Apply(r, remove, ApplyOptions{ApprovedPlanID: remove.ID}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(instructionsPath)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatalf("DIRECT target changed: %v", err)
 	}
 }

@@ -13,3 +13,17 @@ func TestLookupLaunchAdapter(t *testing.T) {
 		t.Fatal("accepted unknown adapter")
 	}
 }
+
+func TestCandidatePathsIncludeObservableCodexFacts(t *testing.T) {
+	facts := RuntimeFacts{Options: map[string]map[string]string{"codex": {"fallbackFilenames": "TEAM.md, AGENTS.md", "workingDirectory": "services/api"}}}
+	got := CandidatePaths("codex", facts)
+	for _, want := range []string{"TEAM.md", "services/AGENTS.md", "services/AGENTS.override.md", "services/api/AGENTS.md", "services/api/AGENTS.override.md"} {
+		found := false
+		for _, path := range got {
+			found = found || path == want
+		}
+		if !found {
+			t.Fatalf("missing %s in %#v", want, got)
+		}
+	}
+}

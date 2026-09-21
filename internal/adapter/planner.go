@@ -1,6 +1,10 @@
 package adapter
 
-import "fmt"
+import (
+	"fmt"
+	"path"
+	"strings"
+)
 
 func Lookup(id string) (Adapter, error) {
 	switch id {
@@ -17,7 +21,23 @@ func Lookup(id string) (Adapter, error) {
 func CandidatePaths(id string, facts RuntimeFacts) []string {
 	switch id {
 	case "codex":
-		return []string{"AGENTS.override.md", "AGENTS.md"}
+		paths := []string{"AGENTS.override.md", "AGENTS.md"}
+		options := facts.Options[id]
+		for _, fallback := range strings.Split(options["fallbackFilenames"], ",") {
+			if fallback = strings.TrimSpace(fallback); fallback != "" && fallback != "?" {
+				paths = appendUnique(paths, fallback)
+			}
+		}
+		working := strings.Trim(options["workingDirectory"], "/")
+		if working != "" && working != "." {
+			dir := ""
+			for _, part := range strings.Split(working, "/") {
+				dir = path.Join(dir, part)
+				paths = appendUnique(paths, path.Join(dir, "AGENTS.override.md"))
+				paths = appendUnique(paths, path.Join(dir, "AGENTS.md"))
+			}
+		}
+		return paths
 	case "claude-code":
 		return []string{"CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.local.md", "AGENTS.md"}
 	case "workbuddy":
@@ -25,6 +45,14 @@ func CandidatePaths(id string, facts RuntimeFacts) []string {
 	default:
 		return nil
 	}
+}
+func appendUnique(items []string, value string) []string {
+	for _, item := range items {
+		if item == value {
+			return items
+		}
+	}
+	return append(items, value)
 }
 func ArtifactID(path string) string {
 	switch path {

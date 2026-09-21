@@ -58,6 +58,23 @@ func TestResolveUAWPAllowsCanonicalInstructions(t *testing.T) {
 	}
 }
 
+func TestResolveNativeAllowsObservedCodexCandidatesButRejectsArbitraryPaths(t *testing.T) {
+	root, err := OpenRoot(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range []string{"TEAM.md", "services/api/AGENTS.md", "services/api/AGENTS.override.md"} {
+		if _, err := root.resolveNative(candidate); err != nil {
+			t.Fatalf("resolveNative(%q): %v", candidate, err)
+		}
+	}
+	for _, candidate := range []string{"README.txt", "services/api/CLAUDE.md", "../TEAM.md"} {
+		if _, err := root.resolveNative(candidate); err == nil {
+			t.Fatalf("resolveNative(%q) succeeded", candidate)
+		}
+	}
+}
+
 func TestResolveUAWPRejectsSymlinkAncestors(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlink creation commonly requires elevated Windows privileges")

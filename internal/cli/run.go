@@ -145,6 +145,13 @@ func runDiagnostic(command string, args []string, stdout, stderr io.Writer) int 
 		}
 	}
 	writeOutput(stdout, format, result)
+	for _, resolution := range result.Adapters {
+		for _, finding := range resolution.Findings {
+			if finding.Severity == "error" {
+				return exitInvalidState
+			}
+		}
+	}
 	switch report.Code {
 	case workspace.CodeUnknownNamespace:
 		return exitUnsafe

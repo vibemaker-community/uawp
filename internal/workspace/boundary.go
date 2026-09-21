@@ -71,8 +71,16 @@ func (r Root) ResolveUAWP(relative string) (string, error) {
 
 func (r Root) resolveNative(relative string) (string, error) {
 	allowed := map[string]bool{"AGENTS.md": true, "AGENTS.override.md": true, "CLAUDE.md": true, "CODEBUDDY.md": true, ".claude/CLAUDE.md": true}
-	if !allowed[relative] {
+	segments := strings.Split(relative, "/")
+	rootMarkdown := len(segments) == 1 && validPortableSegment(segments[0]) && strings.HasSuffix(strings.ToLower(segments[0]), ".md")
+	nestedCodex := len(segments) > 1 && (segments[len(segments)-1] == "AGENTS.md" || segments[len(segments)-1] == "AGENTS.override.md")
+	if !allowed[relative] && !rootMarkdown && !nestedCodex {
 		return "", fmt.Errorf("path is not an adapter-managed native entry: %q", relative)
+	}
+	for _, segment := range segments {
+		if !validPortableSegment(segment) {
+			return "", fmt.Errorf("invalid adapter-managed native entry: %q", relative)
+		}
 	}
 	target := filepath.Join(r.path, filepath.FromSlash(relative))
 	rel, err := filepath.Rel(r.path, target)

@@ -37,7 +37,9 @@ uawp adapter add codex --workspace /absolute/project/path --format json --approv
 Launch provider IDs are `codex`, `claude-code`, and `workbuddy`. Runtime facts
 that affect selection can be supplied with `--provider-version`,
 `--instruction-files`, `--direct-agents-support`, and
-`--provider-environment`. If a conditional route reports a warning, review it
+`--provider-environment`. Codex discovery also accepts the observed
+`--fallback-filenames` and `--working-directory`; these files become immutable
+preview inputs. If a conditional route reports a warning, review it
 and repeat `--acknowledge FINDING_CODE` on both preview and apply. Creating a
 Claude entry that would otherwise shadow an existing `AGENTS.md` requires
 acknowledging `CLAUDE_CREATION_CHANGES_SELECTION`; its proposal preserves both
@@ -64,4 +66,3 @@ Malformed markers, binary/oversized entries, symlinks, changed preview inputs,
 or manifest disagreement stop mutation. Review the reported state and create a
 fresh plan. Interrupted publication leaves `RECOVERY_REQUIRED`; recovery is a
 separate, explicit workflow.
-

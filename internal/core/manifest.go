@@ -25,14 +25,16 @@ const (
 )
 
 type IntegrationArtifact struct {
-	ID                   string          `json:"id"`
-	Path                 string          `json:"path"`
-	Mode                 IntegrationMode `json:"mode"`
-	Target               string          `json:"target"`
-	Consumers            []string        `json:"consumers"`
-	CreatedFile          bool            `json:"createdFile"`
-	ArtifactSHA256       string          `json:"artifactSHA256"`
-	OutsideContentSHA256 string          `json:"outsideContentSHA256,omitempty"`
+	ID                   string                       `json:"id"`
+	Path                 string                       `json:"path"`
+	Mode                 IntegrationMode              `json:"mode"`
+	Target               string                       `json:"target"`
+	Consumers            []string                     `json:"consumers"`
+	ConsumerFacts        map[string]map[string]string `json:"consumerFacts,omitempty"`
+	CreatedFile          bool                         `json:"createdFile"`
+	Inserted             bool                         `json:"inserted,omitempty"`
+	ArtifactSHA256       string                       `json:"artifactSHA256"`
+	OutsideContentSHA256 string                       `json:"outsideContentSHA256,omitempty"`
 }
 
 // Manifest establishes that a .uawp namespace belongs to UAWP and identifies
@@ -124,7 +126,7 @@ func ValidateManifest(manifest Manifest) error {
 	if !stateVersionPattern.MatchString(manifest.StateVersion) {
 		return newDomainError(ErrUnsupportedVersion, "unsupported state version %q", manifest.StateVersion)
 	}
-	seenIDs, seenPaths := map[string]bool{}, map[string]bool{}
+	seenIDs, seenPaths, seenConsumers := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for i := range manifest.Integrations {
 		artifact := manifest.Integrations[i]
 		if err := validateIntegration(artifact); err != nil {
@@ -137,6 +139,12 @@ func ValidateManifest(manifest Manifest) error {
 			return newDomainError(ErrInvalidState, "duplicate integration path %q", artifact.Path)
 		}
 		seenIDs[artifact.ID], seenPaths[artifact.Path] = true, true
+		for _, consumer := range artifact.Consumers {
+			if seenConsumers[consumer] {
+				return newDomainError(ErrInvalidState, "consumer %q is registered by multiple artifacts", consumer)
+			}
+			seenConsumers[consumer] = true
+		}
 	}
 	return nil
 }
@@ -168,6 +176,11 @@ func validateIntegration(a IntegrationArtifact) error {
 			return fmt.Errorf("invalid or duplicate consumer %q", consumer)
 		}
 		seen[consumer] = true
+	}
+	for consumer := range a.ConsumerFacts {
+		if !seen[consumer] {
+			return fmt.Errorf("facts provided for unregistered consumer %q", consumer)
+		}
 	}
 	return nil
 }

@@ -34,3 +34,13 @@ func TestImportPreservesCRLFAndNoFinalNewline(t *testing.T) {
 		t.Fatalf("content=%q", after)
 	}
 }
+
+func TestImportRejectsDuplicateOwnedLines(t *testing.T) {
+	content := []byte("@.uawp/INSTRUCTIONS.md\n@.uawp/INSTRUCTIONS.md\n")
+	if _, _, err := UpsertImport(content, ".uawp/INSTRUCTIONS.md"); err == nil {
+		t.Fatal("upsert accepted duplicate import")
+	}
+	if _, _, err := RemoveImport(content, ".uawp/INSTRUCTIONS.md"); err == nil {
+		t.Fatal("remove accepted duplicate import")
+	}
+}
