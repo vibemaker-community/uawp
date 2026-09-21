@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uawp.dev/schemas/manifest-v1.schema.json",
+  "title": "UAWP namespace manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol", "stateVersion"],
+  "properties": {
+    "protocol": {
+      "const": "UAWP"
+    },
+    "stateVersion": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+\\.[0-9]+$"
+    }
+  }
+}
