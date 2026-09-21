@@ -1,6 +1,6 @@
 # ADR 0001: Go Toolchain and Dependency Policy
 
-**Status:** Proposed for implementation-plan approval  
+**Status:** Proposed for implementation-plan approval
 **Date:** 2026-09-21
 
 ## Context
@@ -70,4 +70,3 @@ The repository must keep Go package boundaries strict; choosing a compiled
 language does not itself provide transactional safety. Preview/apply drift,
 symlink escapes, ownership invariants, and interrupted writes remain explicit
 application concerns and release gates.
-

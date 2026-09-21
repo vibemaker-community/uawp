@@ -1,6 +1,6 @@
 # UAWP v1.0 Implementation Roadmap
 
-**Status:** Proposed for approval  
+**Status:** Proposed for approval
 **Spec:** `docs/superpowers/specs/2026-09-21-uawp-product-engineering-design.md`
 
 The product specification spans several independently reviewable subsystems.

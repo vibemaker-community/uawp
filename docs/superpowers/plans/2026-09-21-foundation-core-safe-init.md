@@ -100,7 +100,7 @@ func TestRunVersion(t *testing.T) {
 
 - [ ] **Step 2: Confirm the test fails because the module and `Run` do not exist**
 
-Run: `go test ./internal/cli -run TestRunVersion -v`  
+Run: `go test ./internal/cli -run TestRunVersion -v`
 Expected: FAIL with missing `go.mod` or undefined `Run`.
 
 - [ ] **Step 3: Create the minimal module and CLI seam**
@@ -133,7 +133,7 @@ images do not yet expose one matrix entry.
 
 - [ ] **Step 5: Run the quality gate**
 
-Run: `make check`  
+Run: `make check`
 Expected: all commands exit 0 and `TestRunVersion` passes.
 
 - [ ] **Step 6: Commit the project foundation**
@@ -173,7 +173,7 @@ func TestDecodeManifest(t *testing.T) {
 
 - [ ] **Step 2: Verify the manifest tests fail**
 
-Run: `go test ./internal/core -run TestDecodeManifest -v`  
+Run: `go test ./internal/core -run TestDecodeManifest -v`
 Expected: FAIL with undefined manifest types/functions.
 
 - [ ] **Step 3: Implement strict streaming decode and validation**
@@ -202,7 +202,7 @@ fields, fixes `protocol` to `UAWP`, and constrains `stateVersion` to
 
 - [ ] **Step 5: Run domain tests and vet**
 
-Run: `go test ./internal/core -v && go vet ./internal/core`  
+Run: `go test ./internal/core -v && go vet ./internal/core`
 Expected: PASS and no vet diagnostics.
 
 - [ ] **Step 6: Commit manifest ownership validation**
@@ -241,7 +241,7 @@ func TestValidateOwnership(t *testing.T) {
 
 - [ ] **Step 2: Verify tests fail before implementation**
 
-Run: `go test ./internal/core -run TestValidateOwnership -v`  
+Run: `go test ./internal/core -run TestValidateOwnership -v`
 Expected: FAIL with undefined ownership types.
 
 - [ ] **Step 3: Implement the two-state model**
@@ -274,7 +274,7 @@ offset in the state parser introduced here.
 
 - [ ] **Step 5: Run all Core tests**
 
-Run: `go test ./internal/core -v`  
+Run: `go test ./internal/core -v`
 Expected: PASS.
 
 - [ ] **Step 6: Commit ownership state types**
@@ -313,7 +313,7 @@ func TestResolveUAWPRejectsEscape(t *testing.T) {
 
 - [ ] **Step 2: Verify boundary tests fail**
 
-Run: `go test ./internal/workspace -run 'Test(OpenRoot|ResolveUAWP)' -v`  
+Run: `go test ./internal/workspace -run 'Test(OpenRoot|ResolveUAWP)' -v`
 Expected: FAIL with undefined `OpenRoot`/`ResolveUAWP`.
 
 - [ ] **Step 3: Implement lexical and physical containment checks**
@@ -331,7 +331,7 @@ case-insensitive `CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`.
 
 - [ ] **Step 5: Run boundary tests on the current platform**
 
-Run: `go test ./internal/workspace -run 'Test(OpenRoot|ResolveUAWP|Portable)' -v`  
+Run: `go test ./internal/workspace -run 'Test(OpenRoot|ResolveUAWP|Portable)' -v`
 Expected: PASS; symlink cases may skip only when the OS denies test symlink
 creation, with the skip reason printed.
 
@@ -371,7 +371,7 @@ contains action, path, before fingerprint, after fingerprint, and byte count.
 
 - [ ] **Step 2: Verify plan tests fail**
 
-Run: `go test ./internal/plan -v`  
+Run: `go test ./internal/plan -v`
 Expected: FAIL with missing package/types.
 
 - [ ] **Step 3: Implement immutable plan values**
@@ -394,7 +394,7 @@ inventory data, and never creates directories or normalizes project files.
 
 - [ ] **Step 6: Run plan and discovery tests**
 
-Run: `go test ./internal/plan ./internal/workspace -v`  
+Run: `go test ./internal/plan ./internal/workspace -v`
 Expected: PASS.
 
 - [ ] **Step 7: Commit planning and discovery**
@@ -430,7 +430,7 @@ change; the unknown namespace returns an error.
 
 - [ ] **Step 2: Verify init tests fail**
 
-Run: `go test ./internal/workspace -run TestPlanInit -v`  
+Run: `go test ./internal/workspace -run TestPlanInit -v`
 Expected: FAIL with undefined `PlanInit`.
 
 - [ ] **Step 3: Implement deterministic initial state generation**
@@ -451,7 +451,7 @@ rolled-back, and pending actions.
 
 - [ ] **Step 5: Verify apply tests fail**
 
-Run: `go test ./internal/workspace -run TestApply -v`  
+Run: `go test ./internal/workspace -run TestApply -v`
 Expected: FAIL with undefined `Apply`.
 
 - [ ] **Step 6: Implement approval, drift checks, journal, and atomic writes**
@@ -465,7 +465,7 @@ journal after each action; remove it only after verification.
 
 - [ ] **Step 7: Run race-enabled workspace tests**
 
-Run: `go test -race ./internal/workspace -v`  
+Run: `go test -race ./internal/workspace -v`
 Expected: PASS with all drift and failpoint cases.
 
 - [ ] **Step 8: Commit safe init application**
@@ -495,7 +495,7 @@ every finding.
 
 - [ ] **Step 2: Verify report tests fail**
 
-Run: `go test ./internal/workspace -run 'Test(Status|Doctor)' -v`  
+Run: `go test ./internal/workspace -run 'Test(Status|Doctor)' -v`
 Expected: FAIL with undefined report functions.
 
 - [ ] **Step 3: Implement stable findings**
@@ -512,7 +512,7 @@ after every status/doctor fixture and assert equality.
 
 - [ ] **Step 5: Run report tests**
 
-Run: `go test ./internal/workspace -run 'Test(Status|Doctor)' -v`  
+Run: `go test ./internal/workspace -run 'Test(Status|Doctor)' -v`
 Expected: PASS.
 
 - [ ] **Step 6: Commit diagnostics**
@@ -546,7 +546,7 @@ internal failure exits 10.
 
 - [ ] **Step 2: Verify CLI tests fail**
 
-Run: `go test ./internal/cli -run 'Test(Init|Status|Doctor|Exit)' -v`  
+Run: `go test ./internal/cli -run 'Test(Init|Status|Doctor|Exit)' -v`
 Expected: FAIL because commands are not registered.
 
 - [ ] **Step 3: Implement standard-library flag parsing per command**
@@ -565,7 +565,7 @@ Reject unknown formats before workspace access.
 
 - [ ] **Step 5: Run CLI and full tests**
 
-Run: `go test ./internal/cli -v && go test ./...`  
+Run: `go test ./internal/cli -v && go test ./...`
 Expected: PASS.
 
 - [ ] **Step 6: Commit the CLI vertical slice**
@@ -619,7 +619,7 @@ workspace root.
 
 - [ ] **Step 5: Run preservation, race, and fuzz smoke checks**
 
-Run: `go test -race ./... && go test ./internal/e2e -run '^$' -fuzz Fuzz -fuzztime 10s`  
+Run: `go test -race ./... && go test ./internal/e2e -run '^$' -fuzz Fuzz -fuzztime 10s`
 Expected: PASS with no protected-file mismatch, race, or panic.
 
 - [ ] **Step 6: Commit end-to-end safety evidence**
@@ -669,9 +669,9 @@ exit codes. Assert every linked local document exists.
 
 - [ ] **Step 5: Run the complete Phase 1 gate**
 
-Run: `make check`  
-Run: `go test ./internal/e2e -run TestDocumentationExamples -v`  
-Run: `git diff --check`  
+Run: `make check`
+Run: `go test ./internal/e2e -run TestDocumentationExamples -v`
+Run: `git diff --check`
 Expected: all exit 0.
 
 - [ ] **Step 6: Commit the usable increment documentation**
