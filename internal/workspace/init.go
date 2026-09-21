@@ -14,6 +14,11 @@ func PlanInit(root Root) (plan.Plan, error) {
 	return planInitAt(root, time.Now())
 }
 
+// PlanInitAt reconstructs the exact initialization plan for an approved time.
+func PlanInitAt(root Root, generatedAt time.Time) (plan.Plan, error) {
+	return planInitAt(root, generatedAt)
+}
+
 func planInitAt(root Root, now time.Time) (plan.Plan, error) {
 	inventory, err := Discover(root)
 	if err != nil {
