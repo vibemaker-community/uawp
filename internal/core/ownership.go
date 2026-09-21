@@ -35,6 +35,11 @@ func ValidateOwnership(value Ownership) error {
 	if strings.TrimSpace(value.Purpose) == "" {
 		return newDomainError(ErrInvalidState, "purpose is required")
 	}
+	for name, field := range map[string]string{"worker ID": value.WorkerID, "agent": value.Agent, "purpose": value.Purpose} {
+		if strings.ContainsAny(field, "\r\n") || len(field) > 4096 {
+			return newDomainError(ErrInvalidState, "%s must be a single line of at most 4096 bytes", name)
+		}
+	}
 	if value.AcquiredAt.IsZero() {
 		return newDomainError(ErrInvalidState, "acquisition time is required")
 	}

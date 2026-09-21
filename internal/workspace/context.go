@@ -13,6 +13,9 @@ import (
 const maxContextBytes = 1 << 20
 
 func PlanContextSync(root Root, workerID string, content []byte) (plan.Plan, error) {
+	if status := Status(root); status.Code != CodeActiveOwner {
+		return plan.Plan{}, fmt.Errorf("workspace blocks context sync: %s", status.Observed)
+	}
 	workerID = strings.TrimSpace(workerID)
 	if len(content) == 0 || len(content) > maxContextBytes {
 		return plan.Plan{}, fmt.Errorf("context must contain 1 to 1048576 bytes")

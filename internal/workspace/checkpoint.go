@@ -21,6 +21,9 @@ type CheckpointRequest struct {
 var milestonePattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
 func PlanCheckpointAt(root Root, request CheckpointRequest) (plan.Plan, error) {
+	if status := Status(root); status.Code != CodeActiveOwner {
+		return plan.Plan{}, fmt.Errorf("workspace blocks checkpoint: %s", status.Observed)
+	}
 	worker := strings.TrimSpace(request.WorkerID)
 	id := strings.TrimSpace(request.MilestoneID)
 	label := strings.TrimSpace(request.Label)

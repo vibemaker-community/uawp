@@ -19,6 +19,9 @@ type HandoffRequest struct {
 }
 
 func PlanHandoffAt(root Root, request HandoffRequest) (plan.Plan, error) {
+	if status := Status(root); status.Code != CodeActiveOwner {
+		return plan.Plan{}, fmt.Errorf("workspace blocks handoff: %s", status.Observed)
+	}
 	worker := strings.TrimSpace(request.WorkerID)
 	purpose := strings.TrimSpace(request.Purpose)
 	if worker == "" || purpose == "" || len(request.FinalContext) == 0 || len(request.FinalContext) > maxContextBytes {

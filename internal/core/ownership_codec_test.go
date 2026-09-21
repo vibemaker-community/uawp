@@ -53,3 +53,16 @@ func TestEncodeOwnershipRejectsInvalidValue(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestEncodeOwnershipRejectsMultilineFields(t *testing.T) {
+	now := time.Now()
+	for _, value := range []Ownership{
+		{Status: Active, WorkerID: "w\n- Status: RELEASED", Agent: "a", AcquiredAt: now, Purpose: "p"},
+		{Status: Active, WorkerID: "w", Agent: "a\rbroken", AcquiredAt: now, Purpose: "p"},
+		{Status: Active, WorkerID: "w", Agent: "a", AcquiredAt: now, Purpose: "p\ninjected"},
+	} {
+		if _, err := EncodeOwnership(value); err == nil {
+			t.Fatal("encoded multiline field")
+		}
+	}
+}

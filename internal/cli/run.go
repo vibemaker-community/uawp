@@ -30,9 +30,17 @@ type commandOutput struct {
 	PlanID        string                   `json:"planID,omitempty"`
 	Findings      []workspace.StatusReport `json:"findings"`
 	Lifecycle     any                      `json:"lifecycle,omitempty"`
+	Metadata      plan.Metadata            `json:"metadata,omitempty"`
+	Preview       []previewChange          `json:"preview,omitempty"`
 	Changes       []plan.Change            `json:"changes"`
 	Mutated       bool                     `json:"mutated"`
 	NextAction    string                   `json:"nextAction"`
+}
+
+type previewChange struct {
+	Path   string `json:"path"`
+	Before string `json:"before"`
+	After  string `json:"after"`
 }
 
 func Run(args []string, stdout, stderr io.Writer) int {

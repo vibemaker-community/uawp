@@ -42,6 +42,13 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 		return ApplyReport{}, fmt.Errorf("plan workspace %q does not match %q", value.Workspace, root.Path())
 	}
 	changes := value.Changes()
+	unlock, err := acquireTransactionLock(root)
+	if err != nil {
+		return ApplyReport{}, err
+	}
+	if unlock != nil {
+		defer unlock()
+	}
 	if err := verifyInputs(root, value.Inputs()); err != nil {
 		return ApplyReport{}, err
 	}
@@ -62,8 +69,12 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 	}
 
 	applied := make([]appliedChange, 0, len(changes))
+	appliedPaths := map[string]bool{}
 	for index, change := range changes {
 		if err := callFailpoint(options, "before-action", index); err != nil {
+			return applyNeedsRecovery(index, err)
+		}
+		if err := verifyInputsExcept(root, value.Inputs(), appliedPaths); err != nil {
 			return applyNeedsRecovery(index, err)
 		}
 		target, err := targetForChange(root, change)
@@ -102,8 +113,12 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 		}
 		entry := appliedChange{path: target, kind: change.Kind, logical: change.Path, afterSHA256: change.AfterSHA256}
 		applied = append(applied, entry)
+		appliedPaths[change.Path] = true
 		if err := callFailpoint(options, "after-publish", index); err != nil {
 			return ApplyReport{}, fmt.Errorf("publication of %s may require recovery: %w", change.Path, err)
+		}
+		if err := verifyAfterState(root, []plan.Change{change}); err != nil {
+			return ApplyReport{}, fmt.Errorf("published %s requires recovery: %w", change.Path, err)
 		}
 		journal.Completed = append(journal.Completed, change.Path)
 		journal.Pending = journal.Pending[1:]
@@ -127,6 +142,40 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 		report.Applied = append(report.Applied, change.Path)
 	}
 	return report, nil
+}
+
+func acquireTransactionLock(root Root) (func(), error) {
+	namespace := filepath.Join(root.Path(), ".uawp")
+	if info, err := os.Lstat(namespace); os.IsNotExist(err) {
+		return nil, nil
+	} else if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("unsafe namespace for transaction lock")
+	}
+	lockPath := filepath.Join(namespace, "TRANSACTION.lock")
+	file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("another UAWP transaction is active: %w", err)
+	}
+	file.Close()
+	recoveryPath := filepath.Join(namespace, "RECOVERY.json")
+	if _, err := os.Lstat(recoveryPath); err == nil {
+		os.Remove(lockPath)
+		return nil, fmt.Errorf("workspace recovery is required before mutation")
+	} else if !os.IsNotExist(err) {
+		os.Remove(lockPath)
+		return nil, err
+	}
+	return func() { _ = os.Remove(lockPath) }, nil
+}
+
+func verifyInputsExcept(root Root, inputs []plan.Input, skip map[string]bool) error {
+	var remaining []plan.Input
+	for _, input := range inputs {
+		if !skip[input.Path] {
+			remaining = append(remaining, input)
+		}
+	}
+	return verifyInputs(root, remaining)
 }
 
 func writeUpdate(target, before string, content []byte, mode os.FileMode, index int, options ApplyOptions) error {
@@ -173,16 +222,10 @@ func writeUpdate(target, before string, content []byte, mode os.FileMode, index 
 	if err != nil || plan.HashBytes(backup) != before {
 		return fmt.Errorf("update drift while staging backup")
 	}
-	if err := os.Remove(target); err != nil {
-		return err
-	}
-	if err := os.Link(temporaryPath, target); err != nil {
-		if restoreErr := os.Link(backupPath, target); restoreErr != nil {
-			return fmt.Errorf("publish update: %v; restore failed: %v", err, restoreErr)
-		}
-		return err
-	}
-	if err := os.Remove(temporaryPath); err != nil {
+	// Transaction lock serializes all UAWP writers; rename provides atomic
+	// publication with no missing-file interval. The hard-link backup retains
+	// the exact verified prior inode for recovery diagnostics.
+	if err := os.Rename(temporaryPath, target); err != nil {
 		return err
 	}
 	return syncDir(filepath.Dir(target))

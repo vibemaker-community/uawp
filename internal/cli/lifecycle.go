@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/uawp/uawp/internal/core"
@@ -113,7 +114,7 @@ func runLifecycleMutation(command string, args []string, stdout, stderr io.Write
 		return exitInvalidState
 	}
 	token := approvalToken(generatedAt, value.ID)
-	result := commandOutput{SchemaVersion: "1", Command: command, Workspace: root.Path(), PlanID: token, Changes: value.Changes(), NextAction: "Review the plan and rerun with --approve " + token}
+	result := commandOutput{SchemaVersion: "1", Command: command, Workspace: root.Path(), PlanID: token, Changes: value.Changes(), Metadata: value.Metadata(), Preview: reviewableChanges(root, value), NextAction: "Review the plan and rerun with --approve " + token}
 	if f.approval == "" {
 		writeOutput(stdout, f.format, result)
 		return exitApprovalRequired
@@ -130,4 +131,20 @@ func runLifecycleMutation(command string, args []string, stdout, stderr io.Write
 	result.NextAction = "Operation applied and verified."
 	writeOutput(stdout, f.format, result)
 	return exitOK
+}
+
+func reviewableChanges(root workspace.Root, value plan.Plan) []previewChange {
+	var result []previewChange
+	for _, change := range value.Changes() {
+		before := "<missing>"
+		if raw, err := os.ReadFile(filepath.Join(root.Path(), filepath.FromSlash(change.Path))); err == nil {
+			before = string(raw)
+		}
+		after := "<directory>"
+		if change.Kind != plan.CreateDir {
+			after = string(change.Content())
+		}
+		result = append(result, previewChange{Path: change.Path, Before: before, After: after})
+	}
+	return result
 }

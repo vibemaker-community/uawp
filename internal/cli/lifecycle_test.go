@@ -82,3 +82,16 @@ func TestAcquireCommandPreviewAndApply(t *testing.T) {
 		t.Fatalf("output=%s", raw)
 	}
 }
+
+func TestRecoverPreviewIncludesReviewableDocumentsAndMetadata(t *testing.T) {
+	dir := initializedCLIWorkspace(t)
+	args := []string{"acquire", "--workspace", dir, "--worker-id", "worker-a", "--agent", "Agent A", "--purpose", "work", "--format", "json"}
+	token := decodePlanToken(t, runCLI(t, args, 5))
+	runCLI(t, append(args, "--approve", token), 0)
+	raw := runCLI(t, []string{"recover", "--workspace", dir, "--controller-id", "human-1", "--reason", "confirmed crash", "--format", "json"}, 5)
+	for _, term := range [][]byte{[]byte("worker-a"), []byte("human-1"), []byte("confirmed crash"), []byte("RELEASED"), []byte("ACTIVE")} {
+		if !bytes.Contains(raw, term) {
+			t.Fatalf("preview missing %q: %s", term, raw)
+		}
+	}
+}

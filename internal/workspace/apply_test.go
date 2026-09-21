@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/uawp/uawp/internal/core"
 	"github.com/uawp/uawp/internal/plan"
 )
 
@@ -213,6 +214,28 @@ func TestApplyUpdateRejectsDriftWithoutOverwrite(t *testing.T) {
 	content, _ := os.ReadFile(target)
 	if string(content) != "competitor" {
 		t.Fatalf("content=%q", content)
+	}
+}
+
+func TestApplyBlocksExistingRecoveryAndRevalidatesInputsPerAction(t *testing.T) {
+	root, at := activeFixture(t)
+	p, _ := PlanContextSync(root, "worker-a", []byte("changed"))
+	mustWrite(t, filepath.Join(root.Path(), ".uawp", "RECOVERY.json"), "{}")
+	if _, err := Apply(root, p, ApplyOptions{ApprovedPlanID: p.ID}); err == nil {
+		t.Fatal("applied over recovery")
+	}
+	os.Remove(filepath.Join(root.Path(), ".uawp", "RECOVERY.json"))
+	ownerPath := filepath.Join(root.Path(), ".uawp", "ACTIVE_WORKER.md")
+	_, err := Apply(root, p, ApplyOptions{ApprovedPlanID: p.ID, Failpoint: func(stage string, index int) error {
+		if stage == "before-action" && index == 0 {
+			next := core.Ownership{Status: core.Active, WorkerID: "worker-b", Agent: "B", AcquiredAt: at, Purpose: "other"}
+			raw, _ := core.EncodeOwnership(next)
+			return os.WriteFile(ownerPath, raw, 0o600)
+		}
+		return nil
+	}})
+	if err == nil {
+		t.Fatal("applied after authority drift")
 	}
 }
 
