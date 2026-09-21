@@ -27,6 +27,9 @@ states:
   retained for audit continuity.
 
 Acquisition and release timestamps use RFC 3339 with an explicit timezone. A
-release cannot precede acquisition. The operations to acquire, release, sync,
-checkpoint, and hand off are Plan 2 work; this increment only initializes and
-validates their state representation.
+release cannot precede acquisition. Implemented operations are read-only
+resume, acquire, release, context sync, immutable milestone checkpoint,
+context-first handoff, and Human Controller-authorized stale recovery.
+
+Recovery never infers staleness or acquires a replacement owner. State v1 has
+no TTL, heartbeat, lease expiry, or automatic release.

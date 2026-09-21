@@ -1,7 +1,7 @@
 # UAWP — Universal Agent Workspace Protocol
 
 UAWP is an agent-neutral protocol and CLI for safely persisting workspace
-state across agent sessions. This first increment initializes `.uawp/` without
+state across agent sessions. It initializes `.uawp/` without
 silently changing project-owned or agent-native instruction files.
 
 ## Try safe initialization
@@ -34,7 +34,9 @@ Inspect a workspace without modifying it:
 ```
 
 Read [safe initialization](docs/user/safe-init.md),
-[diagnostics](docs/user/diagnostics.md), and the [v1 state model](docs/protocol/state-v1.md).
+[diagnostics](docs/user/diagnostics.md), [worker lifecycle](docs/user/lifecycle.md),
+[stale recovery](docs/user/stale-recovery.md), and the [v1 state model](docs/protocol/state-v1.md).
 
-This increment has no advertised agent adapters yet. Adapter integration and
-the worker lifecycle commands are planned for later increments.
+The CLI now includes `resume`, `acquire`, `release`, `sync`, `checkpoint`,
+`handoff`, and Human Controller-approved `recover`. The four canonical
+agent-neutral prompts live in `prompts/`. No agent adapters are advertised yet.
