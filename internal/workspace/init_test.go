@@ -43,17 +43,13 @@ func TestPlanInitAbsentNamespace(t *testing.T) {
 	}
 }
 
-func TestPlanInitOwnedNamespaceIsIdempotent(t *testing.T) {
+func TestPlanInitRejectsManifestOnlyNamespace(t *testing.T) {
 	dir := t.TempDir()
 	mustMkdir(t, filepath.Join(dir, ".uawp"))
 	mustWrite(t, filepath.Join(dir, ".uawp", "manifest.json"), `{"protocol":"UAWP","stateVersion":"1.0.0"}`)
 	root, _ := OpenRoot(dir)
-	value, err := PlanInit(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(value.Changes()) != 0 {
-		t.Fatalf("idempotent init planned changes: %#v", value.Changes())
+	if _, err := PlanInit(root); err == nil {
+		t.Fatal("PlanInit accepted manifest-only namespace")
 	}
 }
 

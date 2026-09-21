@@ -26,6 +26,10 @@ func planInitAt(root Root, now time.Time) (plan.Plan, error) {
 	}
 	switch inventory.Namespace {
 	case NamespaceOwned:
+		report := Status(root)
+		if report.Code != CodeReady && report.Code != CodeActiveOwner {
+			return plan.Plan{}, fmt.Errorf("cannot initialize incomplete UAWP namespace: %s", report.Observed)
+		}
 		return plan.NewForWorkspace("init", root.Path(), nil), nil
 	case NamespaceUnknown, NamespaceInvalid:
 		return plan.Plan{}, fmt.Errorf("cannot initialize %s namespace: %s", inventory.Namespace, inventory.ManifestError)
