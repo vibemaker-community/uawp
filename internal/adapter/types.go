@@ -47,6 +47,7 @@ type FileFact struct {
 	State   FileState `json:"state"`
 	SHA256  string    `json:"sha256,omitempty"`
 	Content []byte    `json:"-"`
+	Mode    uint32    `json:"-"`
 }
 type Snapshot struct {
 	Root            string

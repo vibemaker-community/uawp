@@ -65,6 +65,7 @@ func DiscoverSnapshot(root string, candidates []string, version string, options 
 			fact.State = FileInvalidUTF8
 		default:
 			fact.State = FileRegular
+			fact.Mode = uint32(info.Mode().Perm())
 			fact.Content = append([]byte(nil), data...)
 			fact.SHA256 = plan.HashBytes(data)
 		}
