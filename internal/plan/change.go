@@ -14,6 +14,7 @@ type ChangeKind string
 const (
 	CreateDir  ChangeKind = "CREATE_DIR"
 	CreateFile ChangeKind = "CREATE_FILE"
+	UpdateFile ChangeKind = "UPDATE_FILE"
 
 	MissingSHA256   = "MISSING"
 	DirectorySHA256 = "DIRECTORY"
@@ -45,6 +46,10 @@ func NewFile(path string, mode uint32, before string, content []byte) Change {
 	}
 }
 
+func NewUpdateFile(path string, mode uint32, before string, content []byte) Change {
+	return Change{Kind: UpdateFile, Path: path, BeforeSHA256: before, AfterSHA256: HashBytes(content), Mode: mode, Size: int64(len(content)), content: append([]byte(nil), content...)}
+}
+
 func (c Change) Content() []byte {
 	return append([]byte(nil), c.content...)
 }
@@ -55,6 +60,13 @@ type Plan struct {
 	Workspace string `json:"workspace,omitempty"`
 	changes   []Change
 	inputs    []Input
+	metadata  Metadata
+}
+
+type Metadata struct {
+	ActorWorkerID string `json:"actorWorkerID,omitempty"`
+	Reason        string `json:"reason,omitempty"`
+	ControllerID  string `json:"controllerID,omitempty"`
 }
 
 // Input is a read-only project fact on which an approval depends.
@@ -72,6 +84,10 @@ func NewForWorkspace(operation, workspace string, input []Change) Plan {
 }
 
 func NewForWorkspaceInputs(operation, workspace string, input []Change, inputs []Input) Plan {
+	return NewForWorkspaceInputsMetadata(operation, workspace, input, inputs, Metadata{})
+}
+
+func NewForWorkspaceInputsMetadata(operation, workspace string, input []Change, inputs []Input, metadata Metadata) Plan {
 	changes := cloneChanges(input)
 	inputs = append([]Input(nil), inputs...)
 	sort.Slice(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })
@@ -81,13 +97,15 @@ func NewForWorkspaceInputs(operation, workspace string, input []Change, inputs [
 		Workspace string   `json:"workspace,omitempty"`
 		Changes   []Change `json:"changes"`
 		Inputs    []Input  `json:"inputs"`
-	}{operation, workspace, changes, inputs})
+		Metadata  Metadata `json:"metadata"`
+	}{operation, workspace, changes, inputs, metadata})
 	if err != nil {
 		panic(fmt.Sprintf("canonical plan encoding failed: %v", err))
 	}
-	return Plan{ID: HashBytes(canonical), Operation: operation, Workspace: workspace, changes: changes, inputs: inputs}
+	return Plan{ID: HashBytes(canonical), Operation: operation, Workspace: workspace, changes: changes, inputs: inputs, metadata: metadata}
 }
-func (p Plan) Inputs() []Input { return append([]Input(nil), p.inputs...) }
+func (p Plan) Inputs() []Input    { return append([]Input(nil), p.inputs...) }
+func (p Plan) Metadata() Metadata { return p.metadata }
 
 func (p Plan) Changes() []Change {
 	return cloneChanges(p.changes)

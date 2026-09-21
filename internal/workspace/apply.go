@@ -92,6 +92,8 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 			err = os.Mkdir(target, os.FileMode(change.Mode))
 		case plan.CreateFile:
 			err = writeAtomic(target, change.Content(), os.FileMode(change.Mode), index, options)
+		case plan.UpdateFile:
+			err = writeUpdate(target, change.BeforeSHA256, change.Content(), os.FileMode(change.Mode), index, options)
 		default:
 			err = fmt.Errorf("unsupported change kind %q", change.Kind)
 		}
@@ -125,6 +127,65 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 		report.Applied = append(report.Applied, change.Path)
 	}
 	return report, nil
+}
+
+func writeUpdate(target, before string, content []byte, mode os.FileMode, index int, options ApplyOptions) error {
+	temporary, err := os.CreateTemp(filepath.Dir(target), ".uawp-update-*")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if _, err := temporary.Write(content); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Chmod(mode); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	if err := callFailpoint(options, "before-update", index); err != nil {
+		return err
+	}
+	current, err := os.ReadFile(target)
+	if err != nil || plan.HashBytes(current) != before {
+		return fmt.Errorf("update drift for %s", target)
+	}
+	backupFile, err := os.CreateTemp(filepath.Dir(target), ".uawp-backup-*")
+	if err != nil {
+		return err
+	}
+	backupPath := backupFile.Name()
+	backupFile.Close()
+	os.Remove(backupPath)
+	defer os.Remove(backupPath)
+	if err := os.Link(target, backupPath); err != nil {
+		return fmt.Errorf("create update backup: %w", err)
+	}
+	backup, err := os.ReadFile(backupPath)
+	if err != nil || plan.HashBytes(backup) != before {
+		return fmt.Errorf("update drift while staging backup")
+	}
+	if err := os.Remove(target); err != nil {
+		return err
+	}
+	if err := os.Link(temporaryPath, target); err != nil {
+		if restoreErr := os.Link(backupPath, target); restoreErr != nil {
+			return fmt.Errorf("publish update: %v; restore failed: %v", err, restoreErr)
+		}
+		return err
+	}
+	if err := os.Remove(temporaryPath); err != nil {
+		return err
+	}
+	return syncDir(filepath.Dir(target))
 }
 
 func applyNeedsRecovery(index int, cause error) (ApplyReport, error) {

@@ -42,3 +42,14 @@ func TestPlanCopiesContent(t *testing.T) {
 		t.Fatal("plan content was mutable through caller-owned slices")
 	}
 }
+
+func TestUpdateFileCarriesExactFingerprints(t *testing.T) {
+	before := HashBytes([]byte("before"))
+	change := NewUpdateFile(".uawp/CONTEXT.md", 0o600, before, []byte("after"))
+	if change.Kind != UpdateFile || change.BeforeSHA256 != before || change.AfterSHA256 != HashBytes([]byte("after")) {
+		t.Fatalf("change=%#v", change)
+	}
+	if got := string(change.Content()); got != "after" {
+		t.Fatalf("content=%q", got)
+	}
+}

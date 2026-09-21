@@ -182,6 +182,40 @@ func TestApplyLeavesRecoveryJournalAfterPublishedInterruption(t *testing.T) {
 	}
 }
 
+func TestApplyUpdateReplacesVerifiedManagedFile(t *testing.T) {
+	root := openTempRoot(t)
+	initializeFixture(t, root)
+	target := filepath.Join(root.Path(), ".uawp", "CONTEXT.md")
+	before, _ := os.ReadFile(target)
+	change := plan.NewUpdateFile(".uawp/CONTEXT.md", 0o600, plan.HashBytes(before), []byte("updated\n"))
+	value := plan.NewForWorkspace("sync", root.Path(), []plan.Change{change})
+	report, err := Apply(root, value, ApplyOptions{ApprovedPlanID: value.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, _ := os.ReadFile(target)
+	if !report.Verified || string(content) != "updated\n" {
+		t.Fatalf("report=%#v content=%q", report, content)
+	}
+}
+
+func TestApplyUpdateRejectsDriftWithoutOverwrite(t *testing.T) {
+	root := openTempRoot(t)
+	initializeFixture(t, root)
+	target := filepath.Join(root.Path(), ".uawp", "CONTEXT.md")
+	before, _ := os.ReadFile(target)
+	change := plan.NewUpdateFile(".uawp/CONTEXT.md", 0o600, plan.HashBytes(before), []byte("updated\n"))
+	value := plan.NewForWorkspace("sync", root.Path(), []plan.Change{change})
+	mustWrite(t, target, "competitor")
+	if _, err := Apply(root, value, ApplyOptions{ApprovedPlanID: value.ID}); err == nil {
+		t.Fatal("updated drifted file")
+	}
+	content, _ := os.ReadFile(target)
+	if string(content) != "competitor" {
+		t.Fatalf("content=%q", content)
+	}
+}
+
 func openTempRoot(t *testing.T) Root {
 	t.Helper()
 	root, err := OpenRoot(t.TempDir())
