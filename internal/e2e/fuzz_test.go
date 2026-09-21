@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/uawp/uawp/internal/adapter"
 	"github.com/uawp/uawp/internal/core"
 	"github.com/uawp/uawp/internal/workspace"
 )
@@ -21,6 +22,20 @@ func FuzzDecodeManifest(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, input string) {
 		_, _ = core.DecodeManifest(strings.NewReader(input))
+	})
+}
+
+func FuzzManagedBlockEditing(f *testing.F) {
+	for _, seed := range []string{"", "# existing\n", "```\n<!-- UAWP:BEGIN -->\n```", "说明\r\n", string([]byte{0, 1})} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, input string) {
+		spec := adapter.BlockSpec{ArtifactID: "uawp-entry-agents-v1", Target: ".uawp/INSTRUCTIONS.md", Consumers: []string{"codex"}, Body: "Read `.uawp/INSTRUCTIONS.md` before UAWP work."}
+		after, _, err := adapter.UpsertManagedBlock([]byte(input), spec)
+		if err != nil {
+			return
+		}
+		_, _ = adapter.RemoveManagedBlock(after, spec)
 	})
 }
 

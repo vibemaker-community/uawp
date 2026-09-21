@@ -15,6 +15,8 @@ func TestDocumentationExamples(t *testing.T) {
 		"docs/protocol/state-v1.md",
 		"docs/user/safe-init.md",
 		"docs/user/diagnostics.md",
+		"docs/user/adapters.md",
+		"docs/adapters/authoring.md",
 		"docs/engineering/package-boundaries.md",
 	} {
 		if _, err := os.Stat(filepath.Join(repo, path)); err != nil {

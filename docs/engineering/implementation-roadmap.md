@@ -1,6 +1,6 @@
 # UAWP v1.0 Implementation Roadmap
 
-**Status:** Proposed for approval
+**Status:** Plans 1-3 implemented; Plans 4-5 remain
 **Spec:** `docs/superpowers/specs/2026-09-21-uawp-product-engineering-design.md`
 
 The product specification spans several independently reviewable subsystems.
@@ -38,6 +38,10 @@ adapter.
 
 **Deliverable:** verified adapters integrate idempotently without claiming
 ownership of native files.
+
+**Status:** Implemented for Codex, Claude Code, and Tencent WorkBuddy, including
+preview/approval, configured-consumer tracking, dynamic health, and safe
+single-consumer removal.
 
 ## Plan 4 — Upgrade, Uninstall, and Recovery
 

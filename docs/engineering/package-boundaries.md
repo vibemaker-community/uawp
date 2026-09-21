@@ -3,7 +3,8 @@
 The dependency direction is:
 
 ```text
-cli -> workspace -> plan/core
+cli -> workspace -> adapter -> core
+                \-> plan/core
 ```
 
 `internal/core` contains vendor-neutral protocol types and validation.
@@ -11,7 +12,15 @@ cli -> workspace -> plan/core
 owns filesystem discovery, boundaries, apply/recovery, and diagnostics.
 `internal/cli` parses commands and renders results.
 
-Future adapters may depend on Core contracts, but Core must never import an
+`internal/adapter` contains provider evidence and pure effective-entry
+resolution. It may use agent-neutral Core integration modes, but it does not
+write files. Workspace consumes resolutions and remains the sole mutation
+authority.
+
+adapter, CLI package, vendor package, native-agent filename, or vendor-specific
+instruction behavior.
+Core must never import an adapter, CLI package, vendor package, native-agent
+filename, or vendor-specific instruction behavior.
 adapter, CLI package, vendor package, native-agent filename, or vendor-specific
 instruction behavior.
 

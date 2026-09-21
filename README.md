@@ -35,8 +35,20 @@ Inspect a workspace without modifying it:
 
 Read [safe initialization](docs/user/safe-init.md),
 [diagnostics](docs/user/diagnostics.md), [worker lifecycle](docs/user/lifecycle.md),
-[stale recovery](docs/user/stale-recovery.md), and the [v1 state model](docs/protocol/state-v1.md).
+[stale recovery](docs/user/stale-recovery.md), [agent adapters](docs/user/adapters.md),
+and the [v1 state model](docs/protocol/state-v1.md).
 
 The CLI now includes `resume`, `acquire`, `release`, `sync`, `checkpoint`,
 `handoff`, and Human Controller-approved `recover`. The four canonical
-agent-neutral prompts live in `prompts/`. No agent adapters are advertised yet.
+agent-neutral prompts live in `prompts/`.
+
+The launch adapters are Codex, Claude Code, and Tencent WorkBuddy. Every native
+integration is preview-first, requires exact approval, revalidates drift, and
+records configured consumers without claiming ownership of the surrounding
+native file:
+
+```bash
+./uawp adapter list --workspace /absolute/project/path --format json
+./uawp adapter add codex --workspace /absolute/project/path --format json
+./uawp adapter remove codex --workspace /absolute/project/path --format json
+```
