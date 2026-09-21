@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/uawp/uawp/internal/cli"
@@ -167,7 +168,7 @@ func assertFixture(t *testing.T, root string, manifest fixtureManifest) {
 		if err != nil {
 			t.Fatalf("missing %s: %v", entry.Path, err)
 		}
-		if info.Mode().Perm() != entry.Mode {
+		if runtime.GOOS != "windows" && info.Mode().Perm() != entry.Mode {
 			t.Fatalf("mode %s = %o, want %o", entry.Path, info.Mode().Perm(), entry.Mode)
 		}
 		content, err := os.ReadFile(path)

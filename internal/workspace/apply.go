@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -29,6 +30,7 @@ type recoveryJournal struct {
 	Completed   []string `json:"completed"`
 	RolledBack  []string `json:"rolledBack"`
 	Pending     []string `json:"pending"`
+	InProgress  string   `json:"inProgress,omitempty"`
 	LastFailure string   `json:"lastFailure,omitempty"`
 }
 
@@ -80,6 +82,10 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 			}
 			continue
 		}
+		journal.InProgress = change.Path
+		if err := writeJournal(root, journal); err != nil {
+			return ApplyReport{}, fmt.Errorf("record pending action %s: %w", change.Path, err)
+		}
 
 		switch change.Kind {
 		case plan.CreateDir:
@@ -92,11 +98,16 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 		if err != nil {
 			return rollback(root, journal, applied, fmt.Errorf("apply %s: %w", change.Path, err))
 		}
-		applied = append(applied, appliedChange{path: target, kind: change.Kind, logical: change.Path})
+		entry := appliedChange{path: target, kind: change.Kind, logical: change.Path, afterSHA256: change.AfterSHA256}
+		applied = append(applied, entry)
+		if err := callFailpoint(options, "after-publish", index); err != nil {
+			return ApplyReport{}, fmt.Errorf("publication of %s may require recovery: %w", change.Path, err)
+		}
 		journal.Completed = append(journal.Completed, change.Path)
 		journal.Pending = journal.Pending[1:]
+		journal.InProgress = ""
 		if err := writeJournal(root, journal); err != nil {
-			return rollback(root, journal, applied, err)
+			return ApplyReport{}, fmt.Errorf("publication of %s requires recovery: %w", change.Path, err)
 		}
 	}
 
@@ -289,9 +300,10 @@ func writeReplaceAtomic(target string, content []byte, mode os.FileMode) error {
 }
 
 type appliedChange struct {
-	path    string
-	kind    plan.ChangeKind
-	logical string
+	path        string
+	kind        plan.ChangeKind
+	logical     string
+	afterSHA256 string
 }
 
 func rollback(root Root, journal recoveryJournal, applied []appliedChange, cause error) (ApplyReport, error) {
@@ -307,6 +319,14 @@ func rollback(root Root, journal recoveryJournal, applied []appliedChange, cause
 	_ = os.Remove(journalPath)
 	for index := len(applied) - 1; index >= 0; index-- {
 		entry := applied[index]
+		if entry.kind == plan.CreateFile {
+			content, err := os.ReadFile(entry.path)
+			if err != nil || plan.HashBytes(content) != entry.afterSHA256 {
+				journal.LastFailure += "; rollback refused for changed " + entry.logical
+				journal.Pending = append([]string{entry.logical}, journal.Pending...)
+				continue
+			}
+		}
 		if err := os.Remove(entry.path); err != nil && !os.IsNotExist(err) {
 			journal.LastFailure += "; rollback " + entry.logical + ": " + err.Error()
 			journal.Pending = append([]string{entry.logical}, journal.Pending...)
@@ -326,6 +346,11 @@ func rollback(root Root, journal recoveryJournal, applied []appliedChange, cause
 }
 
 func syncDir(path string) error {
+	if runtime.GOOS == "windows" {
+		// Windows does not provide the Unix directory fsync contract. File data is
+		// synced before publication; directory durability is best-effort here.
+		return nil
+	}
 	directory, err := os.Open(path)
 	if err != nil {
 		return err

@@ -156,6 +156,26 @@ func TestApplyPreservesCompetingFile(t *testing.T) {
 	}
 }
 
+func TestApplyLeavesRecoveryJournalAfterPublishedInterruption(t *testing.T) {
+	root := openTempRoot(t)
+	value, _ := PlanInit(root)
+	_, err := Apply(root, value, ApplyOptions{ApprovedPlanID: value.ID, Failpoint: func(stage string, index int) error {
+		if stage == "after-publish" && index == 1 {
+			return errors.New("simulated process interruption")
+		}
+		return nil
+	}})
+	if err == nil {
+		t.Fatal("Apply succeeded despite interruption")
+	}
+	if got := Status(root).Code; got != CodeRecoveryRequired {
+		t.Fatalf("Status = %s, want recovery required", got)
+	}
+	if _, err := os.Stat(filepath.Join(root.Path(), ".uawp", "ACTIVE_WORKER.md")); err != nil {
+		t.Fatalf("published file missing: %v", err)
+	}
+}
+
 func openTempRoot(t *testing.T) Root {
 	t.Helper()
 	root, err := OpenRoot(t.TempDir())
