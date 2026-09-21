@@ -29,6 +29,7 @@ type commandOutput struct {
 	Workspace     string                   `json:"workspace"`
 	PlanID        string                   `json:"planID,omitempty"`
 	Findings      []workspace.StatusReport `json:"findings"`
+	Lifecycle     any                      `json:"lifecycle,omitempty"`
 	Changes       []plan.Change            `json:"changes"`
 	Mutated       bool                     `json:"mutated"`
 	NextAction    string                   `json:"nextAction"`
@@ -47,6 +48,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runInit(args[1:], stdout, stderr)
 	case "status", "doctor":
 		return runDiagnostic(args[0], args[1:], stdout, stderr)
+	case "resume":
+		return runResume(args[1:], stdout, stderr)
+	case "acquire", "release", "sync", "checkpoint", "handoff", "recover":
+		return runLifecycleMutation(args[0], args[1:], stdout, stderr)
 	default:
 		return usage(stderr)
 	}
@@ -190,6 +195,6 @@ func parseApprovalToken(token string) (time.Time, string, error) {
 }
 
 func usage(stderr io.Writer) int {
-	fmt.Fprintln(stderr, "usage: uawp <version|init|status|doctor>")
+	fmt.Fprintln(stderr, "usage: uawp <version|init|status|doctor|resume|acquire|release|sync|checkpoint|handoff|recover>")
 	return exitUsage
 }
