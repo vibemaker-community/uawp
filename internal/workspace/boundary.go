@@ -69,6 +69,22 @@ func (r Root) ResolveUAWP(relative string) (string, error) {
 	return target, nil
 }
 
+func (r Root) resolveNative(relative string) (string, error) {
+	allowed := map[string]bool{"AGENTS.md": true, "AGENTS.override.md": true, "CLAUDE.md": true, "CODEBUDDY.md": true, ".claude/CLAUDE.md": true}
+	if !allowed[relative] {
+		return "", fmt.Errorf("path is not an adapter-managed native entry: %q", relative)
+	}
+	target := filepath.Join(r.path, filepath.FromSlash(relative))
+	rel, err := filepath.Rel(r.path, target)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("native path escapes workspace")
+	}
+	if err := rejectSymlinkAncestors(r.path, target); err != nil {
+		return "", err
+	}
+	return target, nil
+}
+
 func allowedUAWPPath(segments []string) bool {
 	if len(segments) == 1 {
 		switch segments[0] {

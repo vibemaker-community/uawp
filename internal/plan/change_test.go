@@ -53,3 +53,11 @@ func TestUpdateFileCarriesExactFingerprints(t *testing.T) {
 		t.Fatalf("content=%q", got)
 	}
 }
+
+func TestDeleteFileCarriesExactFingerprint(t *testing.T) {
+	before := HashBytes([]byte("owned"))
+	change := NewDeleteFile("AGENTS.md", before)
+	if change.Kind != DeleteFile || change.BeforeSHA256 != before || change.AfterSHA256 != MissingSHA256 {
+		t.Fatalf("change=%#v", change)
+	}
+}

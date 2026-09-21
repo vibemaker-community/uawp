@@ -105,6 +105,8 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 			err = writeAtomic(target, change.Content(), os.FileMode(change.Mode), index, options)
 		case plan.UpdateFile:
 			err = writeUpdate(target, change.BeforeSHA256, change.Content(), os.FileMode(change.Mode), index, options)
+		case plan.DeleteFile:
+			err = os.Remove(target)
 		default:
 			err = fmt.Errorf("unsupported change kind %q", change.Kind)
 		}
@@ -296,6 +298,15 @@ func verifyAfterState(root Root, changes []plan.Change) error {
 			return err
 		}
 		info, err := os.Lstat(target)
+		if change.Kind == plan.DeleteFile {
+			if os.IsNotExist(err) {
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("verify deletion %s: %w", change.Path, err)
+			}
+			return fmt.Errorf("verify deletion %s: target still exists", change.Path)
+		}
 		if err != nil {
 			return fmt.Errorf("verify %s: %w", change.Path, err)
 		}
@@ -318,7 +329,7 @@ func targetForChange(root Root, change plan.Change) (string, error) {
 		return filepath.Join(root.Path(), ".uawp"), nil
 	}
 	if !strings.HasPrefix(change.Path, ".uawp/") {
-		return "", fmt.Errorf("change escapes UAWP namespace: %s", change.Path)
+		return root.resolveNative(change.Path)
 	}
 	return root.ResolveUAWP(strings.TrimPrefix(change.Path, ".uawp/"))
 }

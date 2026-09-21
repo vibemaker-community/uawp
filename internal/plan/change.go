@@ -15,6 +15,7 @@ const (
 	CreateDir  ChangeKind = "CREATE_DIR"
 	CreateFile ChangeKind = "CREATE_FILE"
 	UpdateFile ChangeKind = "UPDATE_FILE"
+	DeleteFile ChangeKind = "DELETE_FILE"
 
 	MissingSHA256   = "MISSING"
 	DirectorySHA256 = "DIRECTORY"
@@ -49,6 +50,10 @@ func NewFile(path string, mode uint32, before string, content []byte) Change {
 
 func NewUpdateFile(path string, mode uint32, before string, content []byte) Change {
 	return Change{Kind: UpdateFile, Path: path, BeforeSHA256: before, AfterSHA256: HashBytes(content), Mode: mode, Size: int64(len(content)), content: append([]byte(nil), content...)}
+}
+
+func NewDeleteFile(path, before string) Change {
+	return Change{Kind: DeleteFile, Path: path, BeforeSHA256: before, AfterSHA256: MissingSHA256}
 }
 
 func (c Change) WithSequence(sequence int) Change { c.Sequence = sequence; return c }

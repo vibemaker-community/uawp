@@ -145,6 +145,27 @@ func TestApplyRejectsChangedInputFingerprint(t *testing.T) {
 	}
 }
 
+func TestApplyDeletesVerifiedNativeFile(t *testing.T) {
+	root := openTempRoot(t)
+	initPlan, err := PlanInit(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Apply(root, initPlan, ApplyOptions{ApprovedPlanID: initPlan.ID}); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root.Path(), "AGENTS.md")
+	mustWrite(t, target, "owned")
+	change := plan.NewDeleteFile("AGENTS.md", plan.HashBytes([]byte("owned")))
+	value := plan.NewForWorkspace("adapter-remove", root.Path(), []plan.Change{change})
+	if _, err := Apply(root, value, ApplyOptions{ApprovedPlanID: value.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Fatalf("target remains: %v", err)
+	}
+}
+
 func TestApplyPreservesCompetingFile(t *testing.T) {
 	root := openTempRoot(t)
 	value, _ := PlanInit(root)
