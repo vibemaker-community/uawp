@@ -28,7 +28,7 @@ RESUME
   -> inspect workspace and ownership
   -> acquire if RELEASED
   -> work while still ACTIVE owner
-  -> sync context as needed
+  -> sync context when the effective workspace state changes materially
   -> create checkpoint only at a declared milestone
   -> pause and hand off
   -> release
