@@ -76,7 +76,9 @@ func TestApplyRollsBackAfterActionFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("Apply() succeeded despite interruption")
 	}
-	assertNamespaceAbsent(t, root)
+	if got := Status(root).Code; got != CodeRecoveryRequired {
+		t.Fatalf("Status = %s, want recovery required", got)
+	}
 	content, readErr := os.ReadFile(projectFile)
 	if readErr != nil || string(content) != "keep" {
 		t.Fatalf("project file changed: content=%q err=%v", content, readErr)
@@ -98,7 +100,9 @@ func TestApplyRollsBackRenameFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("Apply() succeeded despite rename failure")
 	}
-	assertNamespaceAbsent(t, root)
+	if got := Status(root).Code; got != CodeRecoveryRequired {
+		t.Fatalf("Status = %s, want recovery required", got)
+	}
 }
 
 func TestApplyRollsBackTemporaryWriteFailure(t *testing.T) {
@@ -116,7 +120,9 @@ func TestApplyRollsBackTemporaryWriteFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("Apply() succeeded despite temporary write failure")
 	}
-	assertNamespaceAbsent(t, root)
+	if got := Status(root).Code; got != CodeRecoveryRequired {
+		t.Fatalf("Status = %s, want recovery required", got)
+	}
 }
 
 func TestApplyRejectsChangedInputFingerprint(t *testing.T) {

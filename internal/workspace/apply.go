@@ -64,11 +64,11 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 	applied := make([]appliedChange, 0, len(changes))
 	for index, change := range changes {
 		if err := callFailpoint(options, "before-action", index); err != nil {
-			return rollback(root, journal, applied, fmt.Errorf("before action %d: %w", index, err))
+			return applyNeedsRecovery(index, err)
 		}
 		target, err := targetForChange(root, change)
 		if err != nil {
-			return rollback(root, journal, applied, err)
+			return applyNeedsRecovery(index, err)
 		}
 		if index == 0 && change.Kind == plan.CreateDir && change.Path == ".uawp" {
 			if err := os.Mkdir(target, os.FileMode(change.Mode)); err != nil {
@@ -96,7 +96,7 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 			err = fmt.Errorf("unsupported change kind %q", change.Kind)
 		}
 		if err != nil {
-			return rollback(root, journal, applied, fmt.Errorf("apply %s: %w", change.Path, err))
+			return applyNeedsRecovery(index, fmt.Errorf("apply %s: %w", change.Path, err))
 		}
 		entry := appliedChange{path: target, kind: change.Kind, logical: change.Path, afterSHA256: change.AfterSHA256}
 		applied = append(applied, entry)
@@ -112,7 +112,7 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 	}
 
 	if err := verifyAfterState(root, changes); err != nil {
-		return rollback(root, journal, applied, err)
+		return ApplyReport{}, fmt.Errorf("post-apply verification requires recovery: %w", err)
 	}
 	journalPath := filepath.Join(root.Path(), ".uawp", "RECOVERY.json")
 	if err := os.Remove(journalPath); err != nil && !os.IsNotExist(err) {
@@ -125,6 +125,13 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 		report.Applied = append(report.Applied, change.Path)
 	}
 	return report, nil
+}
+
+func applyNeedsRecovery(index int, cause error) (ApplyReport, error) {
+	if index == 0 {
+		return ApplyReport{}, cause
+	}
+	return ApplyReport{}, fmt.Errorf("initialization requires recovery; no automatic rollback was attempted: %w", cause)
 }
 
 func verifyInputs(root Root, inputs []plan.Input) error {
