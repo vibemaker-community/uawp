@@ -1,6 +1,6 @@
 # UAWP Product Engineering Kickoff and Handoff Specification
 
-**Document status:** Proposed for human approval
+**Document status:** Approved
 
 **Version:** 0.1
 
@@ -8,7 +8,7 @@
 
 **Product:** UAWP — Universal Agent Workspace Protocol
 
-**Repository phase:** Architecture gate; no product implementation yet
+**Repository phase:** Phase 1 — technical decisions and implementation planning
 
 ## 1. Purpose of this document
 
@@ -660,6 +660,6 @@ invariants or Release Gates without explicit Human Controller approval.
 
 ## 18. Approval record
 
-Approval has not yet been granted. Product coding, dependency installation,
-and production skeleton scaffolding MUST wait for the Human Controller's
-review of this document.
+The Human Controller approved this specification on 2026-09-21. Product
+implementation remains gated on approval of the Phase 1 technical decisions,
+implementation plan, and execution method.
