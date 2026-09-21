@@ -1,6 +1,8 @@
 # Adapter Framework and Launch Adapters Design
 
-**Status:** Proposed for written review
+**Status:** Approved
+
+**Approved:** 2026-09-22
 
 **Date:** 2026-09-22
 
