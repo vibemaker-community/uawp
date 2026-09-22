@@ -1,6 +1,6 @@
 # UAWP Human-Friendly CLI, Agent Automation, and Session Fencing Design
 
-**Document status:** Proposed for written review
+**Document status:** Approved
 
 **Version:** 0.1
 
