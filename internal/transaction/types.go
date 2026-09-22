@@ -43,6 +43,7 @@ type Action struct {
 	State        ActionState          `json:"state"`
 	BackupPath   string               `json:"backupPath,omitempty"`
 	BackupSHA256 string               `json:"backupSHA256,omitempty"`
+	BackupMode   uint32               `json:"backupMode,omitempty"`
 }
 
 type Journal struct {
@@ -150,7 +151,7 @@ func (j Journal) Validate() error {
 			return fmt.Errorf("invalid action state %q", action.State)
 		}
 		needsBackup := action.Change.Kind == plan.UpdateFile || action.Change.Kind == plan.DeleteFile
-		if needsBackup && (action.BackupPath == "" || !hashPattern.MatchString(action.BackupSHA256)) {
+		if needsBackup && (action.BackupPath == "" || !hashPattern.MatchString(action.BackupSHA256) || action.BackupMode == 0) {
 			return fmt.Errorf("action %d lacks verified backup", index)
 		}
 		if action.BackupPath != "" && !validBackupPath(action.BackupPath) {

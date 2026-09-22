@@ -22,7 +22,7 @@ func validJournal(t *testing.T) Journal {
 		Phase:         PhaseApplying,
 		StartedAt:     time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC).Format(time.RFC3339),
 		Actions: []Action{{Index: 0, Change: p.Persisted().Changes[0], State: Pending,
-			BackupPath: "backups/0000.bak", BackupSHA256: plan.HashBytes([]byte("before"))}},
+			BackupPath: "backups/0000.bak", BackupSHA256: plan.HashBytes([]byte("before")), BackupMode: 0o600}},
 	}
 }
 

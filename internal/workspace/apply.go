@@ -93,7 +93,7 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 			err = writeAtomic(target, change.Content(), os.FileMode(change.Mode), index, options)
 		case plan.UpdateFile:
 			err = writeUpdate(target, change.BeforeSHA256, change.Content(), os.FileMode(change.Mode), index, options)
-		case plan.DeleteFile:
+		case plan.DeleteFile, plan.DeleteDir:
 			err = os.Remove(target)
 		default:
 			err = fmt.Errorf("unsupported change kind %q", change.Kind)
@@ -285,7 +285,7 @@ func verifyAfterState(root Root, changes []plan.Change) error {
 			return err
 		}
 		info, err := os.Lstat(target)
-		if change.Kind == plan.DeleteFile {
+		if change.Kind == plan.DeleteFile || change.Kind == plan.DeleteDir {
 			if os.IsNotExist(err) {
 				continue
 			}

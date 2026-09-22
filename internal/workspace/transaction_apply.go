@@ -96,13 +96,14 @@ func prepareDurableTransaction(root Root, value plan.Plan, options ApplyOptions)
 				cleanup()
 				return nil, err
 			}
-			content, err := readRegularBounded(target, transaction.MaxRecordBytes)
+			content, mode, err := readRegularBounded(target, transaction.MaxRecordBytes)
 			if err != nil || plan.HashBytes(content) != persistedChange.BeforeSHA256 {
 				cleanup()
 				return nil, fmt.Errorf("cannot stage verified backup for %s", persistedChange.Path)
 			}
 			action.BackupPath = fmt.Sprintf("backups/%04d.bak", index)
 			action.BackupSHA256 = plan.HashBytes(content)
+			action.BackupMode = uint32(mode.Perm())
 			if err := writeExclusiveSynced(filepath.Join(bundleDir, filepath.FromSlash(action.BackupPath)), content, 0o600); err != nil {
 				cleanup()
 				return nil, err
@@ -229,10 +230,11 @@ func writeExclusiveSynced(target string, content []byte, mode os.FileMode) error
 	return syncDir(filepath.Dir(target))
 }
 
-func readRegularBounded(target string, limit int64) ([]byte, error) {
+func readRegularBounded(target string, limit int64) ([]byte, os.FileMode, error) {
 	info, err := os.Lstat(target)
 	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() > limit {
-		return nil, fmt.Errorf("unsafe or oversized backup source")
+		return nil, 0, fmt.Errorf("unsafe or oversized backup source")
 	}
-	return os.ReadFile(target)
+	content, err := os.ReadFile(target)
+	return content, info.Mode(), err
 }

@@ -16,6 +16,7 @@ const (
 	CreateFile ChangeKind = "CREATE_FILE"
 	UpdateFile ChangeKind = "UPDATE_FILE"
 	DeleteFile ChangeKind = "DELETE_FILE"
+	DeleteDir  ChangeKind = "DELETE_DIR"
 
 	MissingSHA256   = "MISSING"
 	DirectorySHA256 = "DIRECTORY"
@@ -56,6 +57,10 @@ func NewDeleteFile(path, before string) Change {
 	return Change{Kind: DeleteFile, Path: path, BeforeSHA256: before, AfterSHA256: MissingSHA256}
 }
 
+func NewDeleteDirectory(path string) Change {
+	return Change{Kind: DeleteDir, Path: path, BeforeSHA256: DirectorySHA256, AfterSHA256: MissingSHA256}
+}
+
 func (c Change) WithSequence(sequence int) Change { c.Sequence = sequence; return c }
 
 func (c Change) Content() []byte {
@@ -92,9 +97,12 @@ type PersistedPlan struct {
 }
 
 type Metadata struct {
-	ActorWorkerID string `json:"actorWorkerID,omitempty"`
-	Reason        string `json:"reason,omitempty"`
-	ControllerID  string `json:"controllerID,omitempty"`
+	ActorWorkerID  string `json:"actorWorkerID,omitempty"`
+	Reason         string `json:"reason,omitempty"`
+	ControllerID   string `json:"controllerID,omitempty"`
+	TransactionID  string `json:"transactionID,omitempty"`
+	JournalSHA256  string `json:"journalSHA256,omitempty"`
+	RecoveryAction string `json:"recoveryAction,omitempty"`
 }
 
 // Input is a read-only project fact on which an approval depends.
@@ -201,6 +209,10 @@ func RestoreChange(value PersistedChange) (Change, error) {
 	case DeleteFile:
 		if change.AfterSHA256 != MissingSHA256 || change.Size != 0 || len(change.content) != 0 {
 			return Change{}, fmt.Errorf("invalid delete change")
+		}
+	case DeleteDir:
+		if change.BeforeSHA256 != DirectorySHA256 || change.AfterSHA256 != MissingSHA256 || change.Size != 0 || len(change.content) != 0 {
+			return Change{}, fmt.Errorf("invalid directory deletion")
 		}
 	default:
 		return Change{}, fmt.Errorf("unsupported change kind %q", change.Kind)
