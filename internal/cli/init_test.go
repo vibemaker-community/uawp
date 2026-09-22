@@ -2,11 +2,44 @@ package cli
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
+
+func TestInteractiveInitUsesCurrentDirectoryAndSameInvocationConfirmation(t *testing.T) {
+	dir := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	rt := runtime{
+		stdin: strings.NewReader("yes\n"), stdout: &stdout, stderr: &stderr,
+		getwd:         func() (string, error) { return dir, nil },
+		userConfigDir: func() (string, error) { return t.TempDir(), nil },
+		now:           func() time.Time { return time.Date(2026, 9, 23, 10, 0, 0, 0, time.UTC) },
+		random:        rand.Reader, stdinTTY: true, stdoutTTY: true,
+	}
+	if code := runWithRuntime([]string{"init"}, rt); code != 0 {
+		t.Fatalf("code=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".uawp", "manifest.json")); err != nil {
+		t.Fatalf("interactive init did not apply: %v", err)
+	}
+}
+
+func TestInteractiveInitCancellationDoesNotMutate(t *testing.T) {
+	dir := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	rt := runtime{stdin: strings.NewReader("no\n"), stdout: &stdout, stderr: &stderr, getwd: func() (string, error) { return dir, nil }, now: time.Now, random: rand.Reader, stdinTTY: true, stdoutTTY: true}
+	if code := runWithRuntime([]string{"init"}, rt); code != 0 {
+		t.Fatalf("code=%d", code)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".uawp")); !os.IsNotExist(err) {
+		t.Fatalf("cancelled init mutated: %v", err)
+	}
+}
 
 func TestInitPreviewThenApprove(t *testing.T) {
 	dir := t.TempDir()

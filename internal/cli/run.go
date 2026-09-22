@@ -47,48 +47,38 @@ type previewChange struct {
 }
 
 func Run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 1 && args[0] == "version" {
-		fmt.Fprintln(stdout, "uawp dev")
-		return exitOK
-	}
-	if len(args) == 0 {
-		return usage(stderr)
-	}
-	switch args[0] {
-	case "init":
-		return runInit(args[1:], stdout, stderr)
-	case "adapter":
-		return runAdapter(args[1:], stdout, stderr)
-	case "status", "doctor":
-		return runDiagnostic(args[0], args[1:], stdout, stderr)
-	case "resume":
-		return runResume(args[1:], stdout, stderr)
-	case "acquire", "release", "sync", "checkpoint", "handoff", "recover":
-		return runLifecycleMutation(args[0], args[1:], stdout, stderr)
-	case "upgrade", "repair", "uninstall":
-		return runMaintenance(args[0], args[1:], stdout, stderr)
-	case "transaction":
-		return runTransaction(args[1:], stdout, stderr)
-	default:
-		return usage(stderr)
-	}
+	return runWithRuntime(args, defaultRuntime(stdout, stderr))
 }
 
-func runInit(args []string, stdout, stderr io.Writer) int {
-	workspacePath, format, approval, ok := parseFlags("init", args, stderr, true)
-	if !ok {
+func runInitWithRuntime(args []string, rt runtime) int {
+	set := flag.NewFlagSet("init", flag.ContinueOnError)
+	set.SetOutput(rt.stderr)
+	workspacePath := set.String("workspace", "", "workspace root")
+	format := set.String("format", "text", "output format")
+	approval := set.String("approve", "", "approved plan ID")
+	nonInteractive := set.Bool("non-interactive", false, "disable prompts")
+	if err := set.Parse(args); err != nil || set.NArg() != 0 || (*format != "text" && *format != "json") {
 		return exitUsage
 	}
-	root, err := workspace.OpenRoot(workspacePath)
+	if *workspacePath == "" {
+		var err error
+		*workspacePath, err = rt.getwd()
+		if err != nil {
+			fmt.Fprintf(rt.stderr, "resolve current workspace: %v\n", err)
+			return exitInternal
+		}
+	}
+	stdout, stderr := rt.stdout, rt.stderr
+	root, err := workspace.OpenRoot(*workspacePath)
 	if err != nil {
 		fmt.Fprintf(stderr, "open workspace: %v\n", err)
 		return exitInternal
 	}
 
-	generatedAt := time.Now()
+	generatedAt := rt.now()
 	approvedHash := ""
-	if approval != "" {
-		generatedAt, approvedHash, err = parseApprovalToken(approval)
+	if *approval != "" {
+		generatedAt, approvedHash, err = parseApprovalToken(*approval)
 		if err != nil {
 			fmt.Fprintf(stderr, "approval rejected: %v\n", err)
 			return exitApprovalRequired
@@ -101,11 +91,40 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	}
 	token := approvalToken(generatedAt, value.ID)
 	result := commandOutput{SchemaVersion: "1", Command: "init", Workspace: root.Path(), PlanID: token, Changes: value.Changes(), NextAction: "Review the plan and rerun init with --approve " + token}
-	if approval == "" {
-		writeOutput(stdout, format, result)
+	surface := selectSurface(*format, rt.stdinTTY, rt.stdoutTTY, *nonInteractive)
+	if *approval == "" && surface == surfaceHuman {
+		fmt.Fprintf(stdout, "Workspace: %s\nPlanned changes:\n", root.Path())
+		for _, change := range value.Changes() {
+			fmt.Fprintf(stdout, "  %s %s\n", change.Kind, change.Path)
+		}
+		fmt.Fprint(stdout, "Continue? [y/N] ")
+		approved, confirmErr := confirm(rt.stdin)
+		if confirmErr != nil {
+			fmt.Fprintf(stderr, "confirmation failed: %v\n", confirmErr)
+			return exitInternal
+		}
+		if !approved {
+			result.PlanID = ""
+			result.NextAction = "Initialization cancelled; no changes were made."
+			writeOutput(stdout, *format, result)
+			return exitOK
+		}
+		report, applyErr := workspace.Apply(root, value, workspace.ApplyOptions{ApprovedPlanID: value.ID})
+		if applyErr != nil {
+			fmt.Fprintf(stderr, "apply failed: %v\n", applyErr)
+			return exitInvalidState
+		}
+		result.PlanID = ""
+		result.Mutated = len(report.Applied) > 0
+		result.NextAction = "Run uawp status to verify workspace readiness."
+		writeOutput(stdout, *format, result)
+		return exitOK
+	}
+	if *approval == "" {
+		writeOutput(stdout, *format, result)
 		return exitApprovalRequired
 	}
-	if approvedHash != value.ID || approval != token {
+	if approvedHash != value.ID || *approval != token {
 		fmt.Fprintln(stderr, "approval rejected: current plan differs from approved plan")
 		return exitApprovalRequired
 	}
@@ -116,7 +135,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	}
 	result.Mutated = len(report.Applied) > 0
 	result.NextAction = "Run uawp status to verify workspace readiness."
-	writeOutput(stdout, format, result)
+	writeOutput(stdout, *format, result)
 	return exitOK
 }
 
