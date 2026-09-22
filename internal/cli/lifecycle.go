@@ -56,8 +56,8 @@ func parseLifecycle(command string, args []string, stderr io.Writer) (lifecycleF
 
 func lifecycleArgsWithWorkspace(args []string, rt runtime) ([]string, error) {
 	for index, arg := range args {
-		if arg == "--workspace" || strings.HasPrefix(arg, "--workspace=") {
-			if arg == "--workspace" && index+1 >= len(args) {
+		if arg == "--workspace" || arg == "-workspace" || strings.HasPrefix(arg, "--workspace=") || strings.HasPrefix(arg, "-workspace=") {
+			if (arg == "--workspace" || arg == "-workspace") && index+1 >= len(args) {
 				return args, nil
 			}
 			return args, nil
@@ -91,10 +91,10 @@ func runResumeWithRuntime(args []string, rt runtime) int {
 	}
 	root, err := workspace.OpenRoot(f.workspace)
 	if err != nil {
-		return exitInternal
+		return writeLifecycleFailure(rt, f.format, "resume", f.workspace, codeWorkspaceInvalid, err.Error(), exitInternal)
 	}
 	surface := selectSurface(f.format, rt.stdinTTY, rt.stdoutTTY, f.nonInteractive)
-	if surface == surfaceHuman && f.worker == "" && !(f.profile != "" && f.session != "") && f.approval == "" {
+	if surface == surfaceHuman && f.worker == "" && f.session == "" && f.generation == 0 && f.approval == "" {
 		return runGuidedResume(root, f, rt)
 	}
 	actor, actorErr := resolveMachineActor(f, rt)
@@ -110,8 +110,7 @@ func runResumeWithRuntime(args []string, rt runtime) int {
 	}
 	report, err := workspace.Resume(root, actor)
 	if err != nil {
-		fmt.Fprintln(rt.stderr, err)
-		return exitInvalidState
+		return writeLifecycleFailure(rt, f.format, "resume", root.Path(), codeWorkspaceInvalid, err.Error(), exitInvalidState)
 	}
 	writeOutput(rt.stdout, f.format, resumeOutput(root, actor, report))
 	return exitOK
@@ -327,14 +326,14 @@ func runLifecycleMutationWithRuntime(command string, args []string, rt runtime) 
 	if f.approval != "" {
 		generatedAt, approvedHash, err = parseApprovalToken(f.approval)
 		if err != nil {
-			return exitApprovalRequired
+			return writeLifecycleFailure(rt, f.format, command, root.Path(), codeApprovalDrift, "Approval token is malformed; request a new preview.", exitApprovalRequired)
 		}
 	}
 	var registry identity.Registry
 	var registryPath string
 	var selectedProfile identity.Profile
 	actor := core.Actor{WorkerID: f.worker, SessionID: f.session, Generation: f.generation}
-	useBinding := command != "recover" && surface == surfaceHuman && f.worker == "" && !(f.profile != "" && f.session != "") && f.approval == ""
+	useBinding := command != "recover" && surface == surfaceHuman && f.worker == "" && f.session == "" && f.generation == 0 && f.approval == ""
 	if useBinding {
 		registry, registryPath, err = loadIdentityRegistry(rt)
 		if err != nil {

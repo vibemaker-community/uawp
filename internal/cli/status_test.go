@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -66,5 +67,25 @@ func TestStatusDefaultsToCurrentDirectory(t *testing.T) {
 	rt := runtime{stdin: strings.NewReader(""), stdout: &stdout, stderr: &stderr, getwd: func() (string, error) { return dir, nil }, userConfigDir: os.UserConfigDir, now: time.Now, random: rand.Reader}
 	if code := runWithRuntime([]string{"status", "--format", "json"}, rt); code != exitOK {
 		t.Fatalf("code=%d stderr=%s", code, stderr.String())
+	}
+}
+
+func TestSingleDashWorkspaceIsNotOverridden(t *testing.T) {
+	dir := initializedCLIWorkspace(t)
+	var stdout, stderr bytes.Buffer
+	rt := runtime{stdin: strings.NewReader(""), stdout: &stdout, stderr: &stderr, getwd: func() (string, error) { return t.TempDir(), nil }, userConfigDir: os.UserConfigDir, now: time.Now, random: rand.Reader}
+	if code := runWithRuntime([]string{"status", "-workspace", dir, "--format", "json"}, rt); code != exitOK {
+		t.Fatalf("code=%d stderr=%s", code, stderr.String())
+	}
+	var result cliOutput
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Workspace != want {
+		t.Fatalf("workspace=%q want=%q", result.Workspace, want)
 	}
 }

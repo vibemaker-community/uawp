@@ -220,6 +220,30 @@ func TestAutomationMissingSessionReturnsOneStructuredError(t *testing.T) {
 	}
 }
 
+func TestAutomationInvalidWorkspaceAndApprovalReturnStructuredErrors(t *testing.T) {
+	for _, args := range [][]string{
+		{"resume", "--workspace", t.TempDir(), "--worker-id", "worker-a", "--session-id", "session-a", "--format", "json"},
+		{"acquire", "--workspace", initializedCLIWorkspace(t), "--worker-id", "worker-a", "--session-id", "session-a", "--agent", "A", "--purpose", "work", "--approve", "bad", "--format", "json"},
+	} {
+		var stdout, stderr bytes.Buffer
+		code := Run(args, &stdout, &stderr)
+		if code != exitInvalidState && code != exitApprovalRequired {
+			t.Fatalf("args=%v code=%d", args, code)
+		}
+		var result struct {
+			Code string `json:"code"`
+		}
+		decoder := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
+		if err := decoder.Decode(&result); err != nil || result.Code == "" {
+			t.Fatalf("args=%v result=%#v err=%v output=%s", args, result, err, stdout.String())
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			t.Fatalf("extra output: %v", err)
+		}
+	}
+}
+
 func TestHumanSyncPreviewShowsReplacementContent(t *testing.T) {
 	dir := initializedCLIWorkspace(t)
 	rt, _, _, _ := identityRuntime(t, "Rock\nyes\n")
@@ -292,6 +316,12 @@ func TestHumanExplicitProfileSessionIsNotReplacedByBinding(t *testing.T) {
 	}
 	if bytes.Contains(contextRaw, []byte("# next")) {
 		t.Fatalf("conflicting explicit Session mutated context: out=%s err=%s", stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	rt.stdin = strings.NewReader("no\n")
+	if code := runWithRuntime([]string{"sync", "--workspace", dir, "--session-id", "session-b", "--generation", "1", "--context-file", contextPath}, rt); code != exitUsage {
+		t.Fatalf("default profile silently replaced explicit Session; code=%d out=%s err=%s", code, stdout.String(), stderr.String())
 	}
 }
 func runCLI(t *testing.T, args []string, want int) []byte {

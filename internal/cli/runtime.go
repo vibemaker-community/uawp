@@ -36,11 +36,11 @@ func defaultRuntime(stdout, stderr io.Writer) runtime {
 }
 
 func isTerminalFile(file *os.File) bool {
-	if file == nil || file.Name() == os.DevNull {
+	if file == nil {
 		return false
 	}
 	info, err := file.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
+	return err == nil && info.Mode()&os.ModeCharDevice != 0 && descriptorIsTerminal(file.Fd())
 }
 
 func isTerminalWriter(writer io.Writer) bool {
