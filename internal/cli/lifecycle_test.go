@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -146,6 +147,55 @@ func TestHumanSyncWithoutContextFileDoesNotConsumePromptAsContext(t *testing.T) 
 	after, _ := os.ReadFile(filepath.Join(dir, ".uawp", "CONTEXT.md"))
 	if !bytes.Equal(before, after) || !strings.Contains(stderr.String(), "--context-file") {
 		t.Fatalf("out=%s err=%s", stdout.String(), stderr.String())
+	}
+}
+
+func TestAutomationLifecycleEmitsOneStructuredJSONDocument(t *testing.T) {
+	dir := initializedCLIWorkspace(t)
+	args := []string{"acquire", "--workspace", dir, "--worker-id", "worker-a", "--session-id", "session-a", "--agent", "Agent A", "--purpose", "work", "--format", "json", "--non-interactive"}
+	var stdout, stderr bytes.Buffer
+	if code := Run(args, &stdout, &stderr); code != exitApprovalRequired {
+		t.Fatalf("preview code=%d stderr=%s", code, stderr.String())
+	}
+	decoder := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
+	var result struct {
+		PlanID, WorkerID, SessionID, Code string
+		OwnershipGeneration               uint64 `json:"ownershipGeneration"`
+		Mutated                           bool   `json:"mutated"`
+	}
+	if err := decoder.Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		t.Fatalf("extra JSON or prompt output: %v: %s", err, stdout.String())
+	}
+	if result.PlanID == "" || result.WorkerID != "worker-a" || result.SessionID != "session-a" || result.OwnershipGeneration != 1 || result.Code != codeApprovalRequired || result.Mutated {
+		t.Fatalf("result=%#v", result)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run(append(args, "--approve", result.PlanID), &stdout, &stderr); code != exitOK {
+		t.Fatalf("apply code=%d stderr=%s", code, stderr.String())
+	}
+}
+
+func TestAutomationResumeClassifiesOtherSessionAndOtherWorker(t *testing.T) {
+	dir := initializedCLIWorkspace(t)
+	args := []string{"acquire", "--workspace", dir, "--worker-id", "worker-a", "--session-id", "session-a", "--agent", "Agent A", "--purpose", "work", "--format", "json"}
+	token := decodePlanToken(t, runCLI(t, args, exitApprovalRequired))
+	runCLI(t, append(args, "--approve", token), exitOK)
+	for _, test := range []struct{ worker, session, code string }{
+		{"worker-a", "session-b", codeActiveOtherSession},
+		{"worker-b", "session-b", codeActiveOtherWorker},
+	} {
+		raw := runCLI(t, []string{"resume", "--workspace", dir, "--worker-id", test.worker, "--session-id", test.session, "--generation", "1", "--format", "json"}, exitOK)
+		var result struct {
+			Code string `json:"code"`
+		}
+		if err := json.Unmarshal(raw, &result); err != nil || result.Code != test.code {
+			t.Fatalf("actor=%s/%s output=%s err=%v", test.worker, test.session, raw, err)
+		}
 	}
 }
 func runCLI(t *testing.T, args []string, want int) []byte {

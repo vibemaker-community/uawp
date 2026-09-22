@@ -107,8 +107,19 @@ func runResumeWithRuntime(args []string, rt runtime) int {
 		fmt.Fprintln(rt.stderr, err)
 		return exitInvalidState
 	}
-	writeOutput(rt.stdout, f.format, commandOutput{SchemaVersion: "1", Command: "resume", Workspace: root.Path(), Lifecycle: report, NextAction: report.NextAction})
+	writeOutput(rt.stdout, f.format, resumeOutput(root, actor, report))
 	return exitOK
+}
+
+func resumeOutput(root workspace.Root, actor core.Actor, report workspace.ResumeReport) commandOutput {
+	code := ""
+	switch report.Outcome {
+	case workspace.ResumeBlockedBySession:
+		code = codeActiveOtherSession
+	case workspace.ResumeBlockedByOther:
+		code = codeActiveOtherWorker
+	}
+	return commandOutput{SchemaVersion: "1", Command: "resume", Workspace: root.Path(), Lifecycle: report, WorkerID: actor.WorkerID, SessionID: actor.SessionID, OwnershipGeneration: actor.Generation, Code: code, NextAction: report.NextAction}
 }
 
 func resolveMachineActor(f lifecycleFlags, rt runtime) (core.Actor, error) {
@@ -185,7 +196,7 @@ func runGuidedResume(root workspace.Root, f lifecycleFlags, rt runtime) int {
 		if f.format == "text" {
 			fmt.Fprintf(rt.stdout, "Resume outcome: %s\n", report.Outcome)
 		}
-		writeOutput(rt.stdout, f.format, commandOutput{SchemaVersion: "1", Command: "resume", Workspace: root.Path(), Lifecycle: report, NextAction: report.NextAction})
+		writeOutput(rt.stdout, f.format, resumeOutput(root, actor, report))
 		return exitOK
 	}
 	value, err := workspace.PlanAcquireAt(root, core.AcquireRequest{WorkerID: profile.WorkerID, SessionID: actor.SessionID, Agent: profile.DisplayName, Purpose: "Resume work", At: rt.now()})
@@ -391,11 +402,16 @@ func runLifecycleMutationWithRuntime(command string, args []string, rt runtime) 
 		value, err = workspace.PlanCheckpointAt(root, workspace.CheckpointRequest{Actor: actor, MilestoneID: f.milestone, Label: f.label, DecisionReferences: f.refs, At: generatedAt})
 	}
 	if err != nil {
+		if f.approval != "" {
+			writeOutput(rt.stdout, f.format, commandOutput{SchemaVersion: "1", Command: command, Workspace: root.Path(), WorkerID: actor.WorkerID, SessionID: actor.SessionID, OwnershipGeneration: actor.Generation, Code: codeApprovalDrift, NextAction: "Workspace or actor state changed; request a new preview."})
+			return exitApprovalRequired
+		}
 		fmt.Fprintln(rt.stderr, err)
 		return exitInvalidState
 	}
 	token := approvalToken(generatedAt, value.ID)
-	result := commandOutput{SchemaVersion: "1", Command: command, Workspace: root.Path(), PlanID: token, Changes: value.Changes(), Metadata: value.Metadata(), Preview: reviewableChanges(root, value), NextAction: "Review the plan and rerun with --approve " + token}
+	metadata := value.Metadata()
+	result := commandOutput{SchemaVersion: "1", Command: command, Workspace: root.Path(), PlanID: token, Changes: value.Changes(), Metadata: metadata, Preview: reviewableChanges(root, value), WorkerID: metadata.ActorWorkerID, SessionID: metadata.ActorSessionID, OwnershipGeneration: metadata.OwnershipGeneration, Code: codeApprovalRequired, NextAction: "Review the plan and rerun with --approve " + token}
 	if f.approval == "" {
 		presentation := mutationPresentation{Command: command, Plan: value, Result: result, Exceptional: command == "recover"}
 		if surface == surfaceHuman && command != "recover" {
@@ -417,6 +433,9 @@ func runLifecycleMutationWithRuntime(command string, args []string, rt runtime) 
 		return exitApprovalRequired
 	}
 	if approvedHash != value.ID || f.approval != token {
+		result.Code = codeApprovalDrift
+		result.NextAction = "Workspace or actor state changed; request a new preview."
+		writeOutput(rt.stdout, f.format, result)
 		return exitApprovalRequired
 	}
 	report, err := workspace.Apply(root, value, workspace.ApplyOptions{ApprovedPlanID: value.ID})
@@ -425,6 +444,7 @@ func runLifecycleMutationWithRuntime(command string, args []string, rt runtime) 
 		return exitInvalidState
 	}
 	result.Mutated = len(report.Applied) > 0
+	result.Code = ""
 	result.NextAction = "Operation applied and verified."
 	writeOutput(rt.stdout, f.format, result)
 	return exitOK

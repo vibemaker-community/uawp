@@ -17,7 +17,7 @@ func TestPromptLibraryIsClosedNeutralAndImmutable(t *testing.T) {
 			t.Fatal(err)
 		}
 		text := string(content)
-		if !strings.Contains(text, "UAWP Prompt Version: 1") || !strings.Contains(text, ".uawp/") {
+		if !strings.Contains(text, "UAWP Prompt Version: 2") || !strings.Contains(text, ".uawp/") {
 			t.Fatalf("prompt %s incomplete", name)
 		}
 		for _, forbidden := range []string{"Claude", "Codex", "AGENTS.md", "CLAUDE.md"} {
@@ -38,10 +38,10 @@ func TestPromptLibraryIsClosedNeutralAndImmutable(t *testing.T) {
 
 func TestPromptLifecycleRequirements(t *testing.T) {
 	checks := map[PromptName][]string{
-		ResumeWork:       {"read-only", "never acquire", "ACTIVE_WORKER.md", "CONTEXT.md"},
-		ContextSync:      {"ACTIVE owner", "retain ownership", "CONTEXT.md"},
-		CreateCheckpoint: {"explicit milestone", "checkpoints/", "never overwrite"},
-		PauseAndHandoff:  {"verify", "release", "no automatic checkpoint", "no further shared writes"},
+		ResumeWork:       {"read-only", "never acquire", "ACTIVE_WORKER.md", "CONTEXT.md", "another Session"},
+		ContextSync:      {"Worker ID, Session ID, and Ownership Generation", "retain", "CONTEXT.md", "drift"},
+		CreateCheckpoint: {"explicit milestone", "checkpoints/", "never overwrite", "complete ACTIVE tuple"},
+		PauseAndHandoff:  {"verify", "release", "no automatic checkpoint", "later generation"},
 	}
 	for name, terms := range checks {
 		raw, _ := Prompt(name)

@@ -24,20 +24,34 @@ const (
 	exitInternal         = 10
 )
 
+const (
+	codeIdentityRequired   = "IDENTITY_CONFIGURATION_REQUIRED"
+	codeSessionRequired    = "SESSION_ID_REQUIRED"
+	codeActiveOtherSession = "ACTIVE_OTHER_SESSION"
+	codeActiveOtherWorker  = "ACTIVE_OTHER_WORKER"
+	codeApprovalRequired   = "APPROVAL_REQUIRED"
+	codeApprovalDrift      = "APPROVAL_INVALIDATED_BY_DRIFT"
+	codeProfileAmbiguous   = "PROFILE_SELECTION_AMBIGUOUS"
+)
+
 type commandOutput struct {
-	SchemaVersion  string                   `json:"schemaVersion"`
-	Command        string                   `json:"command"`
-	Workspace      string                   `json:"workspace"`
-	PlanID         string                   `json:"planID,omitempty"`
-	Findings       []workspace.StatusReport `json:"findings"`
-	Adapters       []adapter.Resolution     `json:"adapters,omitempty"`
-	Lifecycle      any                      `json:"lifecycle,omitempty"`
-	Metadata       plan.Metadata            `json:"metadata,omitempty"`
-	Preview        []previewChange          `json:"preview,omitempty"`
-	Changes        []plan.Change            `json:"changes"`
-	Mutated        bool                     `json:"mutated"`
-	NextAction     string                   `json:"nextAction"`
-	Classification any                      `json:"classification,omitempty"`
+	SchemaVersion       string                   `json:"schemaVersion"`
+	Command             string                   `json:"command"`
+	Workspace           string                   `json:"workspace"`
+	PlanID              string                   `json:"planID,omitempty"`
+	Findings            []workspace.StatusReport `json:"findings"`
+	Adapters            []adapter.Resolution     `json:"adapters,omitempty"`
+	Lifecycle           any                      `json:"lifecycle,omitempty"`
+	Metadata            plan.Metadata            `json:"metadata,omitempty"`
+	Preview             []previewChange          `json:"preview,omitempty"`
+	Changes             []plan.Change            `json:"changes"`
+	Mutated             bool                     `json:"mutated"`
+	NextAction          string                   `json:"nextAction"`
+	Classification      any                      `json:"classification,omitempty"`
+	WorkerID            string                   `json:"workerID,omitempty"`
+	SessionID           string                   `json:"sessionID,omitempty"`
+	OwnershipGeneration uint64                   `json:"ownershipGeneration,omitempty"`
+	Code                string                   `json:"code,omitempty"`
 }
 
 type previewChange struct {
