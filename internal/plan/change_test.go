@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -11,6 +12,51 @@ func TestPlanIDIsDeterministic(t *testing.T) {
 	b := New("init", changes)
 	if a.ID != b.ID {
 		t.Fatalf("%q != %q", a.ID, b.ID)
+	}
+}
+
+func TestPersistedPlanRoundTripPreservesContentAndIdentity(t *testing.T) {
+	content := []byte("after\n")
+	value := NewForWorkspaceInputsMetadata("repair", "/workspace", []Change{
+		NewUpdateFile(".uawp/INSTRUCTIONS.md", 0o600, HashBytes([]byte("before\n")), content).WithSequence(10),
+		NewDeleteFile("AGENTS.md", HashBytes([]byte("owned\n"))).WithSequence(20),
+	}, []Input{{Path: "CLAUDE.md", SHA256: MissingSHA256}}, Metadata{ControllerID: "human-1", Reason: "repair"})
+
+	persisted := value.Persisted()
+	content[0] = 'X'
+	persisted.Changes[0].Content[0] = 'Y'
+	restored, err := Restore(value.Persisted())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.ID != value.ID || restored.Operation != value.Operation || restored.Workspace != value.Workspace {
+		t.Fatalf("restored identity = %#v, want %#v", restored, value)
+	}
+	if !reflect.DeepEqual(restored.Inputs(), value.Inputs()) || restored.Metadata() != value.Metadata() {
+		t.Fatalf("restored inputs/metadata differ")
+	}
+	if got := string(restored.Changes()[0].Content()); got != "after\n" {
+		t.Fatalf("restored content = %q", got)
+	}
+}
+
+func TestRestoreRejectsPersistedPlanTampering(t *testing.T) {
+	value := NewForWorkspace("sync", "/workspace", []Change{
+		NewUpdateFile(".uawp/CONTEXT.md", 0o600, HashBytes([]byte("before")), []byte("after")),
+	})
+	for name, mutate := range map[string]func(*PersistedPlan){
+		"plan id": func(p *PersistedPlan) { p.ID = strings.Repeat("0", 64) },
+		"content": func(p *PersistedPlan) { p.Changes[0].Content = []byte("other") },
+		"size":    func(p *PersistedPlan) { p.Changes[0].Size++ },
+		"kind":    func(p *PersistedPlan) { p.Changes[0].Kind = "UNKNOWN" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			persisted := value.Persisted()
+			mutate(&persisted)
+			if _, err := Restore(persisted); err == nil {
+				t.Fatal("Restore accepted tampered plan")
+			}
+		})
 	}
 }
 

@@ -71,6 +71,26 @@ type Plan struct {
 	metadata  Metadata
 }
 
+type PersistedChange struct {
+	Kind         ChangeKind `json:"kind"`
+	Path         string     `json:"path"`
+	BeforeSHA256 string     `json:"beforeSHA256"`
+	AfterSHA256  string     `json:"afterSHA256"`
+	Mode         uint32     `json:"mode"`
+	Size         int64      `json:"size"`
+	Sequence     int        `json:"sequence"`
+	Content      []byte     `json:"content,omitempty"`
+}
+
+type PersistedPlan struct {
+	ID        string            `json:"id"`
+	Operation string            `json:"operation"`
+	Workspace string            `json:"workspace,omitempty"`
+	Changes   []PersistedChange `json:"changes"`
+	Inputs    []Input           `json:"inputs"`
+	Metadata  Metadata          `json:"metadata"`
+}
+
 type Metadata struct {
 	ActorWorkerID string `json:"actorWorkerID,omitempty"`
 	Reason        string `json:"reason,omitempty"`
@@ -127,6 +147,65 @@ func (p Plan) Metadata() Metadata { return p.metadata }
 
 func (p Plan) Changes() []Change {
 	return cloneChanges(p.changes)
+}
+
+func (p Plan) Persisted() PersistedPlan {
+	result := PersistedPlan{ID: p.ID, Operation: p.Operation, Workspace: p.Workspace, Inputs: p.Inputs(), Metadata: p.Metadata()}
+	for _, change := range p.Changes() {
+		result.Changes = append(result.Changes, PersistedChange{
+			Kind: change.Kind, Path: change.Path, BeforeSHA256: change.BeforeSHA256,
+			AfterSHA256: change.AfterSHA256, Mode: change.Mode, Size: change.Size,
+			Sequence: change.Sequence, Content: change.Content(),
+		})
+	}
+	return result
+}
+
+func Restore(persisted PersistedPlan) (Plan, error) {
+	if persisted.ID == "" || persisted.Operation == "" {
+		return Plan{}, fmt.Errorf("persisted plan identity is incomplete")
+	}
+	changes := make([]Change, len(persisted.Changes))
+	for index, value := range persisted.Changes {
+		change, err := RestoreChange(value)
+		if err != nil {
+			return Plan{}, fmt.Errorf("persisted change %d: %w", index, err)
+		}
+		changes[index] = change
+	}
+	restored := NewForWorkspaceInputsMetadata(persisted.Operation, persisted.Workspace, changes, persisted.Inputs, persisted.Metadata)
+	if restored.ID != persisted.ID {
+		return Plan{}, fmt.Errorf("persisted plan ID mismatch")
+	}
+	return restored, nil
+}
+
+func RestoreChange(value PersistedChange) (Change, error) {
+	if value.Path == "" || value.Size < 0 {
+		return Change{}, fmt.Errorf("invalid path or size")
+	}
+	change := Change{
+		Kind: value.Kind, Path: value.Path, BeforeSHA256: value.BeforeSHA256,
+		AfterSHA256: value.AfterSHA256, Mode: value.Mode, Size: value.Size,
+		Sequence: value.Sequence, content: append([]byte(nil), value.Content...),
+	}
+	switch change.Kind {
+	case CreateDir:
+		if change.BeforeSHA256 != MissingSHA256 || change.AfterSHA256 != DirectorySHA256 || change.Size != 0 || len(change.content) != 0 {
+			return Change{}, fmt.Errorf("invalid directory change")
+		}
+	case CreateFile, UpdateFile:
+		if change.Size != int64(len(change.content)) || change.AfterSHA256 != HashBytes(change.content) {
+			return Change{}, fmt.Errorf("content does not match size or after hash")
+		}
+	case DeleteFile:
+		if change.AfterSHA256 != MissingSHA256 || change.Size != 0 || len(change.content) != 0 {
+			return Change{}, fmt.Errorf("invalid delete change")
+		}
+	default:
+		return Change{}, fmt.Errorf("unsupported change kind %q", change.Kind)
+	}
+	return change, nil
 }
 
 func (p Plan) Preview() string {

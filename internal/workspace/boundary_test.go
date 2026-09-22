@@ -58,6 +58,33 @@ func TestResolveUAWPAllowsCanonicalInstructions(t *testing.T) {
 	}
 }
 
+func TestRecoveryBoundaryAllowsOnlyExactMaintenanceLayout(t *testing.T) {
+	root, err := OpenRoot(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed := []string{
+		"migrations", "migrations/20260922T120000Z-1.0.0-to-1.1.0-aabbccdd.json",
+		"recovery", "recovery/txn-001", "recovery/txn-001/journal.json",
+		"recovery/txn-001/plan.json", "recovery/txn-001/receipt.json",
+		"recovery/txn-001/backups", "recovery/txn-001/backups/0000.bak",
+	}
+	for _, relative := range allowed {
+		if _, err := root.ResolveUAWP(relative); err != nil {
+			t.Errorf("ResolveUAWP(%q): %v", relative, err)
+		}
+	}
+	for _, relative := range []string{
+		"migrations/not-json.txt", "migrations/nested/receipt.json",
+		"recovery/txn-001/unknown.json", "recovery/txn-001/backups/nested/file",
+		"recovery/../manifest.json", "recovery/txn-001\\journal.json",
+	} {
+		if _, err := root.ResolveUAWP(relative); err == nil {
+			t.Errorf("ResolveUAWP(%q) succeeded", relative)
+		}
+	}
+}
+
 func TestResolveNativeAllowsObservedCodexCandidatesButRejectsArbitraryPaths(t *testing.T) {
 	root, err := OpenRoot(t.TempDir())
 	if err != nil {

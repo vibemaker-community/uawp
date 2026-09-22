@@ -96,11 +96,17 @@ func (r Root) resolveNative(relative string) (string, error) {
 func allowedUAWPPath(segments []string) bool {
 	if len(segments) == 1 {
 		switch segments[0] {
-		case "manifest.json", "CONTEXT.md", "ACTIVE_WORKER.md", "DECISIONS.md", "INSTRUCTIONS.md", "RECOVERY.json", "checkpoints":
+		case "manifest.json", "CONTEXT.md", "ACTIVE_WORKER.md", "DECISIONS.md", "INSTRUCTIONS.md", "RECOVERY.json", "checkpoints", "migrations", "recovery":
 			return true
 		}
 	}
-	return len(segments) == 2 && segments[0] == "checkpoints"
+	if len(segments) == 2 {
+		return segments[0] == "checkpoints" || (segments[0] == "migrations" && strings.HasSuffix(segments[1], ".json")) || segments[0] == "recovery"
+	}
+	if len(segments) == 3 && segments[0] == "recovery" {
+		return segments[2] == "journal.json" || segments[2] == "plan.json" || segments[2] == "receipt.json" || segments[2] == "backups"
+	}
+	return len(segments) == 4 && segments[0] == "recovery" && segments[2] == "backups"
 }
 
 func rejectSymlinkAncestors(root, target string) error {
