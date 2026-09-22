@@ -1,7 +1,6 @@
 # UAWP v1.0 Implementation Roadmap
 
-**Status:** Plans 1-4 implemented; Plan 4.5 is in final re-verification; Plan 5
-remains pending
+**Status:** Plans 1-4.5 implemented; Plan 5 remains pending
 **Spec:** `docs/superpowers/specs/2026-09-21-uawp-product-engineering-design.md`
 
 The product specification spans several independently reviewable subsystems.
@@ -81,9 +80,9 @@ protected write with Worker ID, Session ID, and ownership generation.
 workflows are concise for people and deterministic for agents, while expert
 automation remains backward-compatible.
 
-**Status:** Implementation complete with state `1.2.0`, complete ACTIVE actor tuples,
+**Status:** Implemented with state `1.2.0`, complete ACTIVE actor tuples,
 human current-directory workflows, deterministic JSON automation, and Prompt
-Library Version 2. Independent-review findings are resolved pending final gates.
+Library Version 2. Full release gates and independent closure review passed.
 
 ## Plan 5 — Open-source and Release Hardening
 
