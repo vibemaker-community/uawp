@@ -33,6 +33,7 @@ const (
 	codeApprovalDrift      = "APPROVAL_INVALIDATED_BY_DRIFT"
 	codeProfileAmbiguous   = "PROFILE_SELECTION_AMBIGUOUS"
 	codeWorkspaceInvalid   = "WORKSPACE_STATE_INVALID"
+	codeInvalidArguments   = "INVALID_ARGUMENTS"
 )
 
 type commandOutput struct {

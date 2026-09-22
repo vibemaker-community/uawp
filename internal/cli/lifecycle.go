@@ -92,11 +92,10 @@ func runResumeWithRuntime(args []string, rt runtime) int {
 	}
 	f, ok := parseLifecycle("resume", args, rt.stderr)
 	if !ok {
-		return exitUsage
+		return writeLifecycleFailure(rt, f.format, "resume", f.workspace, codeInvalidArguments, "Invalid resume arguments.", exitUsage)
 	}
 	if f.profile != "" && f.worker != "" {
-		fmt.Fprintln(rt.stderr, "choose either --profile or --worker-id, not both")
-		return exitUsage
+		return writeLifecycleFailure(rt, f.format, "resume", f.workspace, codeProfileAmbiguous, "Choose either --profile or --worker-id, not both.", exitUsage)
 	}
 	root, err := workspace.OpenRoot(f.workspace)
 	if err != nil {
@@ -307,11 +306,10 @@ func runLifecycleMutationWithRuntime(command string, args []string, rt runtime) 
 	}
 	f, ok := parseLifecycle(command, args, rt.stderr)
 	if !ok {
-		return exitUsage
+		return writeLifecycleFailure(rt, f.format, command, f.workspace, codeInvalidArguments, "Invalid lifecycle arguments.", exitUsage)
 	}
 	if f.profile != "" && f.worker != "" {
-		fmt.Fprintln(rt.stderr, "choose either --profile or --worker-id, not both")
-		return exitUsage
+		return writeLifecycleFailure(rt, f.format, command, f.workspace, codeProfileAmbiguous, "Choose either --profile or --worker-id, not both.", exitUsage)
 	}
 	root, err := workspace.OpenRoot(f.workspace)
 	if err != nil {
@@ -489,8 +487,7 @@ func runLifecycleMutationWithRuntime(command string, args []string, rt runtime) 
 	}
 	report, err := workspace.Apply(root, value, workspace.ApplyOptions{ApprovedPlanID: value.ID})
 	if err != nil {
-		fmt.Fprintln(rt.stderr, err)
-		return exitInvalidState
+		return writeLifecycleFailure(rt, f.format, command, root.Path(), codeApprovalDrift, err.Error(), exitInvalidState)
 	}
 	result.Mutated = len(report.Applied) > 0
 	result.Code = ""

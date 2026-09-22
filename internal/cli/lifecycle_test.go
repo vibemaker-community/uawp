@@ -246,6 +246,25 @@ func TestAutomationInvalidWorkspaceAndApprovalReturnStructuredErrors(t *testing.
 	}
 }
 
+func TestAutomationArgumentConflictReturnsStructuredJSON(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"release", "--workspace", t.TempDir(), "--worker-id", "worker-a", "--profile", "profile-a", "--session-id", "session-a", "--generation", "1", "--format", "json"}, &stdout, &stderr)
+	if code != exitUsage {
+		t.Fatalf("code=%d stderr=%s", code, stderr.String())
+	}
+	var result struct {
+		Code string `json:"code"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
+	if err := decoder.Decode(&result); err != nil || result.Code != codeProfileAmbiguous {
+		t.Fatalf("result=%#v err=%v output=%s", result, err, stdout.String())
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		t.Fatalf("extra output: %v", err)
+	}
+}
+
 func TestHumanSyncPreviewShowsReplacementContent(t *testing.T) {
 	dir := initializedCLIWorkspace(t)
 	rt, _, _, _ := identityRuntime(t, "Rock\nyes\n")
