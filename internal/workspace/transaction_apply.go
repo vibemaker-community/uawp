@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/uawp/uawp/internal/plan"
@@ -17,6 +18,7 @@ type durableTransaction struct {
 	bundleDir string
 	journal   transaction.Journal
 	bootstrap bool
+	metadata  plan.Metadata
 }
 
 func prepareDurableTransaction(root Root, value plan.Plan, options ApplyOptions) (*durableTransaction, error) {
@@ -119,8 +121,12 @@ func prepareDurableTransaction(root Root, value plan.Plan, options ApplyOptions)
 		cleanup()
 		return nil, err
 	}
-	if bootstrap && len(actions) > 0 && actions[0].Change.Kind == plan.CreateDir && actions[0].Change.Path == ".uawp" {
-		actions[0].State = transaction.Verified
+	if bootstrap {
+		for index := range actions {
+			if actions[index].Change.Kind == plan.CreateDir && (actions[index].Change.Path == ".uawp" || actions[index].Change.Path == ".uawp/recovery") {
+				actions[index].State = transaction.Verified
+			}
+		}
 	}
 	journal := transaction.Journal{SchemaVersion: transaction.JournalSchemaVersion, TransactionID: id, Operation: value.Operation, PlanID: value.ID, Workspace: root.Path(), Phase: transaction.PhaseApplying, StartedAt: started.Format(time.RFC3339), Actions: actions}
 	encodedJournal, err := transaction.EncodeJournal(journal)
@@ -163,7 +169,7 @@ func prepareDurableTransaction(root Root, value plan.Plan, options ApplyOptions)
 	if err := callFailpoint(options, "after-pointer-sync", -1); err != nil {
 		return nil, err
 	}
-	return &durableTransaction{root: root, id: id, namespace: namespace, bundleDir: bundleDir, journal: journal, bootstrap: bootstrap}, nil
+	return &durableTransaction{root: root, id: id, namespace: namespace, bundleDir: bundleDir, journal: journal, bootstrap: bootstrap, metadata: value.Metadata()}, nil
 }
 
 func (d *durableTransaction) transition(index int, state transaction.ActionState) error {
@@ -190,6 +196,11 @@ func (d *durableTransaction) complete(changes []plan.Change, options ApplyOption
 	if clock == nil {
 		clock = time.Now
 	}
+	if d.metadata.MigrationReceiptPath != "" {
+		if err := d.writeMigrationReceipt(changes, clock()); err != nil {
+			return err
+		}
+	}
 	receipt := transaction.Receipt{SchemaVersion: transaction.ReceiptSchemaVersion, TransactionID: d.id, Operation: d.journal.Operation, PlanID: d.journal.PlanID, CompletedAt: clock().Format(time.RFC3339), Result: transaction.ResultCompleted, Hashes: hashes}
 	encoded, err := transaction.EncodeReceipt(receipt)
 	if err != nil {
@@ -209,6 +220,36 @@ func (d *durableTransaction) complete(changes []plan.Change, options ApplyOption
 		return err
 	}
 	return callFailpoint(options, "after-pointer-clear", -1)
+}
+
+func (d *durableTransaction) writeMigrationReceipt(changes []plan.Change, completedAt time.Time) error {
+	hashes := map[string]string{}
+	for _, change := range changes {
+		if change.AfterSHA256 != plan.MissingSHA256 && change.AfterSHA256 != plan.DirectorySHA256 {
+			hashes[change.Path] = change.AfterSHA256
+		}
+	}
+	content, err := encodeMigrationReceipt(migrationReceipt{SchemaVersion: "1", From: d.metadata.MigrationFrom, To: d.metadata.MigrationTo, ApprovedPlanID: d.journal.PlanID, CompletedAt: completedAt.Format(time.RFC3339), ResultingHashes: hashes})
+	if err != nil {
+		return err
+	}
+	relative := d.metadata.MigrationReceiptPath
+	if !strings.HasPrefix(relative, ".uawp/") {
+		return fmt.Errorf("invalid migration receipt path")
+	}
+	target, err := d.root.ResolveUAWP(strings.TrimPrefix(relative, ".uawp/"))
+	if err != nil {
+		return err
+	}
+	if existing, readErr := os.ReadFile(target); readErr == nil {
+		if string(existing) == string(content) {
+			return nil
+		}
+		return fmt.Errorf("migration receipt collision at %s", relative)
+	} else if !os.IsNotExist(readErr) {
+		return readErr
+	}
+	return writeExclusiveSynced(target, content, 0o600)
 }
 
 func writeExclusiveSynced(target string, content []byte, mode os.FileMode) error {

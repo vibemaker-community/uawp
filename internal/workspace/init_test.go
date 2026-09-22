@@ -21,12 +21,14 @@ func TestPlanInitAbsentNamespace(t *testing.T) {
 		t.Fatal(err)
 	}
 	changes := value.Changes()
-	if len(changes) != 7 {
-		t.Fatalf("len(changes) = %d, want 7", len(changes))
+	if len(changes) != 9 {
+		t.Fatalf("len(changes) = %d, want 9", len(changes))
 	}
 	want := map[string]plan.ChangeKind{
 		".uawp":                  plan.CreateDir,
 		".uawp/checkpoints":      plan.CreateDir,
+		".uawp/migrations":       plan.CreateDir,
+		".uawp/recovery":         plan.CreateDir,
 		".uawp/manifest.json":    plan.CreateFile,
 		".uawp/CONTEXT.md":       plan.CreateFile,
 		".uawp/ACTIVE_WORKER.md": plan.CreateFile,

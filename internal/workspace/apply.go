@@ -65,7 +65,7 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 	}
 	appliedPaths := map[string]bool{}
 	for index, change := range changes {
-		if prepared.bootstrap && index == 0 && change.Kind == plan.CreateDir && change.Path == ".uawp" {
+		if prepared.bootstrap && prepared.journal.Actions[index].State == transaction.Verified {
 			appliedPaths[change.Path] = true
 			continue
 		}
@@ -236,6 +236,12 @@ func verifyInputs(root Root, inputs []plan.Input) error {
 				continue
 			}
 			return fmt.Errorf("plan drift: project input %s now exists", input.Path)
+		}
+		if input.SHA256 == plan.DirectorySHA256 {
+			if err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+				continue
+			}
+			return fmt.Errorf("plan drift: project input %s changed", input.Path)
 		}
 		if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("plan drift: project input %s changed", input.Path)

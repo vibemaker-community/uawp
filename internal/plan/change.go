@@ -97,12 +97,15 @@ type PersistedPlan struct {
 }
 
 type Metadata struct {
-	ActorWorkerID  string `json:"actorWorkerID,omitempty"`
-	Reason         string `json:"reason,omitempty"`
-	ControllerID   string `json:"controllerID,omitempty"`
-	TransactionID  string `json:"transactionID,omitempty"`
-	JournalSHA256  string `json:"journalSHA256,omitempty"`
-	RecoveryAction string `json:"recoveryAction,omitempty"`
+	ActorWorkerID        string `json:"actorWorkerID,omitempty"`
+	Reason               string `json:"reason,omitempty"`
+	ControllerID         string `json:"controllerID,omitempty"`
+	TransactionID        string `json:"transactionID,omitempty"`
+	JournalSHA256        string `json:"journalSHA256,omitempty"`
+	RecoveryAction       string `json:"recoveryAction,omitempty"`
+	MigrationFrom        string `json:"migrationFrom,omitempty"`
+	MigrationTo          string `json:"migrationTo,omitempty"`
+	MigrationReceiptPath string `json:"migrationReceiptPath,omitempty"`
 }
 
 // Input is a read-only project fact on which an approval depends.

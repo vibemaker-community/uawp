@@ -21,6 +21,7 @@ const (
 	CodeInvalidOwnership   FindingCode = "INVALID_OWNERSHIP"
 	CodeIncompleteState    FindingCode = "INCOMPLETE_STATE"
 	CodeRecoveryRequired   FindingCode = "RECOVERY_REQUIRED"
+	CodeUpgradeRequired    FindingCode = "UPGRADE_REQUIRED"
 )
 
 type StatusReport struct {
@@ -68,6 +69,9 @@ func diagnose(root Root) StatusReport {
 	}
 	if inventory.StateCompatibility == core.StateUnsupported || inventory.StateCompatibility == core.StateFutureMajor {
 		return finding(CodeUnsupportedVersion, "error", fmt.Sprintf("State version %s is not supported by this UAWP release.", inventory.Manifest.StateVersion), "Use a UAWP version with an explicit compatibility path for this state version.")
+	}
+	if inventory.StateCompatibility == core.StateUpgradeRequired {
+		return finding(CodeUpgradeRequired, "warning", fmt.Sprintf("State version %s requires upgrade to %s.", inventory.Manifest.StateVersion, core.CurrentStateVersion), "Run uawp upgrade to preview the migration.")
 	}
 
 	if _, err := os.Lstat(recoveryPath); err == nil {

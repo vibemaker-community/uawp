@@ -38,7 +38,7 @@ func planInitAt(root Root, now time.Time) (plan.Plan, error) {
 		return plan.Plan{}, fmt.Errorf("unrecognized namespace classification %q", inventory.Namespace)
 	}
 
-	manifest, err := core.EncodeManifest(core.Manifest{Protocol: core.ProtocolName, StateVersion: "1.0.0"})
+	manifest, err := core.EncodeManifest(core.Manifest{Protocol: core.ProtocolName, StateVersion: core.CurrentStateVersion})
 	if err != nil {
 		return plan.Plan{}, err
 	}
@@ -55,6 +55,8 @@ func planInitAt(root Root, now time.Time) (plan.Plan, error) {
 	changes := []plan.Change{
 		plan.NewDirectory(".uawp", 0o700),
 		plan.NewDirectory(".uawp/checkpoints", 0o700),
+		plan.NewDirectory(".uawp/migrations", 0o700),
+		plan.NewDirectory(".uawp/recovery", 0o700),
 		plan.NewFile(".uawp/manifest.json", 0o600, plan.MissingSHA256, manifest),
 		plan.NewFile(".uawp/CONTEXT.md", 0o600, plan.MissingSHA256, state.Context),
 		plan.NewFile(".uawp/ACTIVE_WORKER.md", 0o600, plan.MissingSHA256, activeWorker),
