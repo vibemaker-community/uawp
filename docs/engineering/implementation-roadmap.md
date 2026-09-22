@@ -1,6 +1,6 @@
 # UAWP v1.0 Implementation Roadmap
 
-**Status:** Plans 1-3 implemented; Plans 4-5 remain
+**Status:** Plans 1-3 implemented; Plan 4 design in review; Plans 4-5 remain
 **Spec:** `docs/superpowers/specs/2026-09-21-uawp-product-engineering-design.md`
 
 The product specification spans several independently reviewable subsystems.
@@ -51,6 +51,27 @@ reinstall, drift repair reports, and interrupted-transaction recovery.
 **Deliverable:** supported version transitions and removal paths preserve all
 project-owned content.
 
+**Design:**
+`docs/superpowers/specs/2026-09-22-upgrade-uninstall-transaction-recovery-design.md`
+
+## Plan 4.5 — Human-friendly CLI and Agent Automation
+
+Add three compatible operating surfaces over the same Core operations:
+
+- a default human-friendly mode with current-directory defaults, concise
+  previews, and interactive confirmation;
+- a stable non-interactive agent automation mode with structured input/output
+  and explicit auditable approval; and
+- the existing explicit flag-and-plan-ID surface as expert mode, available
+  without a global mode switch.
+
+This phase changes presentation and command ergonomics, not ownership,
+transaction, preservation, or adapter semantics.
+
+**Deliverable:** routine `init`, `resume`, `sync`, `checkpoint`, and `handoff`
+workflows are concise for people and deterministic for agents, while expert
+automation remains backward-compatible.
+
 ## Plan 5 — Open-source and Release Hardening
 
 Complete packaging, multi-platform CI, fuzz/property tests, security review,
@@ -62,7 +83,7 @@ release candidate.
 
 ## Dependency order
 
-Plans execute in numerical order. A later plan may begin design research while
-an earlier plan is implemented, but no later plan may weaken or bypass an
-earlier plan's public contracts. Interface changes require an ADR and updates
-to every affected plan and test.
+Plans execute in numerical order, including Plan 4.5 between Plans 4 and 5. A
+later plan may begin design research while an earlier plan is implemented, but
+no later plan may weaken or bypass an earlier plan's public contracts.
+Interface changes require an ADR and updates to every affected plan and test.
