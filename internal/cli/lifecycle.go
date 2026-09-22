@@ -1,22 +1,26 @@
 package cli
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/uawp/uawp/internal/core"
+	"github.com/uawp/uawp/internal/identity"
 	"github.com/uawp/uawp/internal/plan"
 	"github.com/uawp/uawp/internal/workspace"
 )
 
 type lifecycleFlags struct {
-	workspace, format, approval, worker, session, agent, purpose, contextFile, milestone, label, controller, reason string
-	generation                                                                                                      uint64
-	refs                                                                                                            []string
+	workspace, format, approval, profile, worker, session, agent, purpose, contextFile, milestone, label, controller, reason string
+	generation                                                                                                               uint64
+	nonInteractive                                                                                                           bool
+	refs                                                                                                                     []string
 }
 type stringList []string
 
@@ -31,9 +35,11 @@ func parseLifecycle(command string, args []string, stderr io.Writer) (lifecycleF
 	set.StringVar(&f.workspace, "workspace", "", "workspace root")
 	set.StringVar(&f.format, "format", "text", "output format")
 	set.StringVar(&f.approval, "approve", "", "approved plan ID")
+	set.StringVar(&f.profile, "profile", "", "local Worker profile ID")
 	set.StringVar(&f.worker, "worker-id", "", "worker ID")
 	set.StringVar(&f.session, "session-id", "", "conversation or execution Session ID")
 	set.Uint64Var(&f.generation, "generation", 0, "ownership generation")
+	set.BoolVar(&f.nonInteractive, "non-interactive", false, "disable prompts")
 	set.StringVar(&f.agent, "agent", "", "agent label")
 	set.StringVar(&f.purpose, "purpose", "", "operation purpose")
 	set.StringVar(&f.contextFile, "context-file", "", "context input file")
@@ -50,20 +56,143 @@ func parseLifecycle(command string, args []string, stderr io.Writer) (lifecycleF
 }
 
 func runResume(args []string, stdout, stderr io.Writer) int {
-	f, ok := parseLifecycle("resume", args, stderr)
+	return runResumeWithRuntime(args, defaultRuntime(stdout, stderr))
+}
+
+func runResumeWithRuntime(args []string, rt runtime) int {
+	f, ok := parseLifecycle("resume", args, rt.stderr)
 	if !ok {
+		return exitUsage
+	}
+	if f.profile != "" && f.worker != "" {
+		fmt.Fprintln(rt.stderr, "choose either --profile or --worker-id, not both")
 		return exitUsage
 	}
 	root, err := workspace.OpenRoot(f.workspace)
 	if err != nil {
 		return exitInternal
 	}
-	report, err := workspace.Resume(root, core.Actor{WorkerID: f.worker, SessionID: f.session, Generation: f.generation})
+	surface := selectSurface(f.format, rt.stdinTTY, rt.stdoutTTY, f.nonInteractive)
+	if surface == surfaceHuman && f.worker == "" {
+		return runGuidedResume(root, f, rt)
+	}
+	actor, actorErr := resolveMachineActor(f, rt)
+	if actorErr != nil {
+		fmt.Fprintln(rt.stderr, actorErr)
+		return exitUsage
+	}
+	report, err := workspace.Resume(root, actor)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(rt.stderr, err)
 		return exitInvalidState
 	}
-	writeOutput(stdout, f.format, commandOutput{SchemaVersion: "1", Command: "resume", Workspace: root.Path(), Lifecycle: report, NextAction: report.NextAction})
+	writeOutput(rt.stdout, f.format, commandOutput{SchemaVersion: "1", Command: "resume", Workspace: root.Path(), Lifecycle: report, NextAction: report.NextAction})
+	return exitOK
+}
+
+func resolveMachineActor(f lifecycleFlags, rt runtime) (core.Actor, error) {
+	if f.worker != "" {
+		if f.session == "" {
+			return core.Actor{}, fmt.Errorf("--session-id is required with --worker-id")
+		}
+		return core.Actor{WorkerID: f.worker, SessionID: f.session, Generation: f.generation}, nil
+	}
+	if f.profile == "" || f.session == "" {
+		return core.Actor{}, fmt.Errorf("explicit --worker-id and --session-id, or --profile and --session-id, are required")
+	}
+	registry, _, err := loadIdentityRegistry(rt)
+	if err != nil {
+		return core.Actor{}, err
+	}
+	profile, err := registry.Selected(f.profile, false)
+	if err != nil {
+		return core.Actor{}, err
+	}
+	return core.Actor{WorkerID: profile.WorkerID, SessionID: f.session, Generation: f.generation}, nil
+}
+
+func runGuidedResume(root workspace.Root, f lifecycleFlags, rt runtime) int {
+	registry, path, err := loadIdentityRegistry(rt)
+	if err != nil {
+		fmt.Fprintf(rt.stderr, "load identity registry: %v\n", err)
+		return exitInternal
+	}
+	confirmationInput := rt.stdin
+	if len(registry.Profiles) == 0 {
+		fmt.Fprint(rt.stdout, "Create a local Worker identity (format example: Zhang San's Codex): ")
+		reader := bufio.NewReader(rt.stdin)
+		label, readErr := reader.ReadString('\n')
+		if readErr != nil && readErr != io.EOF {
+			fmt.Fprintln(rt.stderr, "a display name is required")
+			return exitUsage
+		}
+		label = strings.TrimSpace(label)
+		confirmationInput = reader
+		profile, createErr := identity.NewProfile(label, rt.random)
+		if createErr != nil {
+			fmt.Fprintln(rt.stderr, createErr)
+			return exitUsage
+		}
+		registry.Profiles = append(registry.Profiles, profile)
+		registry.DefaultProfileID = profile.ProfileID
+		if err := identity.Save(path, registry); err != nil {
+			fmt.Fprintf(rt.stderr, "save identity registry: %v\n", err)
+			return exitInternal
+		}
+	}
+	profile, err := registry.Selected(f.profile, true)
+	if err != nil {
+		fmt.Fprintln(rt.stderr, err)
+		return exitUsage
+	}
+	actor := core.Actor{WorkerID: profile.WorkerID}
+	if binding, found := registry.Binding(root.Path(), profile.ProfileID); found {
+		actor.SessionID, actor.Generation = binding.SessionID, binding.Generation
+	} else {
+		actor.SessionID, err = identity.NewSessionID(rt.random)
+		if err != nil {
+			fmt.Fprintf(rt.stderr, "generate Session ID: %v\n", err)
+			return exitInternal
+		}
+	}
+	report, err := workspace.Resume(root, actor)
+	if err != nil {
+		fmt.Fprintf(rt.stderr, "%v; stale ACTIVE ownership requires Human Controller recovery\n", err)
+		return exitInvalidState
+	}
+	if report.Outcome != workspace.ResumeAcquireAvailable {
+		if f.format == "text" {
+			fmt.Fprintf(rt.stdout, "Resume outcome: %s\n", report.Outcome)
+		}
+		writeOutput(rt.stdout, f.format, commandOutput{SchemaVersion: "1", Command: "resume", Workspace: root.Path(), Lifecycle: report, NextAction: report.NextAction})
+		return exitOK
+	}
+	value, err := workspace.PlanAcquireAt(root, core.AcquireRequest{WorkerID: profile.WorkerID, SessionID: actor.SessionID, Agent: profile.DisplayName, Purpose: "Resume work", At: rt.now()})
+	if err != nil {
+		fmt.Fprintln(rt.stderr, err)
+		return exitInvalidState
+	}
+	fmt.Fprintf(rt.stdout, "Ownership preview: %s will become ACTIVE for Session %s. Continue? [y/N] ", profile.DisplayName, actor.SessionID)
+	approved, err := confirm(confirmationInput)
+	if err != nil {
+		fmt.Fprintf(rt.stderr, "confirmation failed: %v\n", err)
+		return exitInternal
+	}
+	if !approved {
+		fmt.Fprintln(rt.stdout, "Acquisition cancelled; Workspace remains read-only.")
+		return exitOK
+	}
+	if _, err := workspace.Apply(root, value, workspace.ApplyOptions{ApprovedPlanID: value.ID}); err != nil {
+		fmt.Fprintln(rt.stderr, err)
+		return exitInvalidState
+	}
+	generation := value.Metadata().OwnershipGeneration
+	registry.UpsertBinding(identity.SessionBinding{Workspace: root.Path(), ProfileID: profile.ProfileID, SessionID: actor.SessionID, Generation: generation})
+	if err := identity.Save(path, registry); err != nil {
+		fmt.Fprintf(rt.stderr, "Workspace ownership is ACTIVE as worker=%s session=%s generation=%d, but local binding save failed: %v; rerun resume with the exact tuple\n", profile.WorkerID, actor.SessionID, generation, err)
+		return exitInternal
+	}
+	fmt.Fprintf(rt.stdout, "Ownership acquired: worker=%s session=%s generation=%d\n", profile.WorkerID, actor.SessionID, generation)
 	return exitOK
 }
 

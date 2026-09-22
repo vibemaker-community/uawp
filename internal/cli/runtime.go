@@ -60,6 +60,10 @@ func runWithRuntime(args []string, rt runtime) int {
 		return usage(rt.stderr)
 	}
 	switch args[0] {
+	case "identity":
+		return runIdentity(args[1:], rt)
+	case "session":
+		return runSession(args[1:], rt)
 	case "init":
 		return runInitWithRuntime(args[1:], rt)
 	case "adapter":
@@ -67,7 +71,7 @@ func runWithRuntime(args []string, rt runtime) int {
 	case "status", "doctor":
 		return runDiagnostic(args[0], args[1:], rt.stdout, rt.stderr)
 	case "resume":
-		return runResume(args[1:], rt.stdout, rt.stderr)
+		return runResumeWithRuntime(args[1:], rt)
 	case "acquire", "release", "sync", "checkpoint", "handoff", "recover":
 		return runLifecycleMutation(args[0], args[1:], rt.stdout, rt.stderr)
 	case "upgrade", "repair", "uninstall":

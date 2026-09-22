@@ -261,6 +261,6 @@ func parseApprovalToken(token string) (time.Time, string, error) {
 }
 
 func usage(stderr io.Writer) int {
-	fmt.Fprintln(stderr, "usage: uawp <version|init|adapter|status|doctor|resume|acquire|release|sync|checkpoint|handoff|recover|upgrade|repair|uninstall|transaction>")
+	fmt.Fprintln(stderr, "usage: uawp <version|init|identity|session|adapter|status|doctor|resume|acquire|release|sync|checkpoint|handoff|recover|upgrade|repair|uninstall|transaction>")
 	return exitUsage
 }

@@ -5,7 +5,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/uawp/uawp/internal/core"
 )
 
 func initializedCLIWorkspace(t *testing.T) string {
@@ -15,6 +19,63 @@ func initializedCLIWorkspace(t *testing.T) string {
 	token := decodePlanToken(t, preview)
 	runCLI(t, []string{"init", "--workspace", dir, "--format", "json", "--approve", token}, 0)
 	return dir
+}
+
+func TestGuidedResumeCreatesProfileAndAcquiresInSameInvocation(t *testing.T) {
+	dir := initializedCLIWorkspace(t)
+	rt, stdout, stderr, config := identityRuntime(t, "Rock's Codex\nyes\n")
+	rt.now = func() time.Time { return time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC) }
+	if code := runWithRuntime([]string{"resume", "--workspace", dir}, rt); code != exitOK {
+		t.Fatalf("code=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Zhang San's Codex") || !strings.Contains(stdout.String(), "Ownership acquired") {
+		t.Fatalf("guided output=%s", stdout.String())
+	}
+	if _, err := os.Stat(filepath.Join(config, "uawp", "identity.json")); err != nil {
+		t.Fatalf("profile not saved: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, ".uawp", "ACTIVE_WORKER.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := core.DecodeOwnership(strings.NewReader(string(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if owner.Status != core.Active || owner.Generation != 1 {
+		t.Fatalf("ownership=%#v", owner)
+	}
+}
+
+func TestGuidedResumeContinuesExactLocalBinding(t *testing.T) {
+	dir := initializedCLIWorkspace(t)
+	rt, stdout, stderr, _ := identityRuntime(t, "Rock's Codex\nyes\n")
+	rt.now = func() time.Time { return time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC) }
+	if code := runWithRuntime([]string{"resume", "--workspace", dir}, rt); code != exitOK {
+		t.Fatalf("first code=%d stderr=%s", code, stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	rt.stdin = strings.NewReader("")
+	if code := runWithRuntime([]string{"resume", "--workspace", dir}, rt); code != exitOK {
+		t.Fatalf("second code=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "OWNED_BY_CALLER") {
+		t.Fatalf("output=%s", stdout.String())
+	}
+}
+
+func TestJSONResumeRequiresExplicitUnambiguousActor(t *testing.T) {
+	dir := initializedCLIWorkspace(t)
+	for _, args := range [][]string{
+		{"resume", "--workspace", dir, "--format", "json"},
+		{"resume", "--workspace", dir, "--worker-id", "worker-a", "--session-id", "session-a", "--profile", "profile-a", "--format", "json"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := Run(args, &stdout, &stderr); code != exitUsage {
+			t.Fatalf("args=%v code=%d stdout=%s stderr=%s", args, code, stdout.String(), stderr.String())
+		}
+	}
 }
 func runCLI(t *testing.T, args []string, want int) []byte {
 	t.Helper()
