@@ -77,6 +77,77 @@ func TestJSONResumeRequiresExplicitUnambiguousActor(t *testing.T) {
 		}
 	}
 }
+
+func TestHumanLifecycleUsesCurrentDirectoryAndBinding(t *testing.T) {
+	dir := initializedCLIWorkspace(t)
+	config := t.TempDir()
+	randomData := make([]byte, 512)
+	for index := range randomData {
+		randomData[index] = byte(index)
+	}
+	newRuntime := func(input string) (runtime, *bytes.Buffer, *bytes.Buffer) {
+		var stdout, stderr bytes.Buffer
+		return runtime{
+			stdin: strings.NewReader(input), stdout: &stdout, stderr: &stderr,
+			getwd: func() (string, error) { return dir, nil }, userConfigDir: func() (string, error) { return config, nil },
+			now: func() time.Time { return time.Date(2026, 9, 23, 13, 0, 0, 0, time.UTC) }, random: bytes.NewReader(randomData),
+			stdinTTY: true, stdoutTTY: true,
+		}, &stdout, &stderr
+	}
+	rt, stdout, stderr := newRuntime("Rock's Codex\nyes\n")
+	if code := runWithRuntime([]string{"resume"}, rt); code != exitOK {
+		t.Fatalf("resume code=%d out=%s err=%s", code, stdout.String(), stderr.String())
+	}
+
+	contextPath := filepath.Join(t.TempDir(), "final-context.md")
+	if err := os.WriteFile(contextPath, []byte("# Updated context\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rt, stdout, stderr = newRuntime("yes\n")
+	if code := runWithRuntime([]string{"sync", "--context-file", contextPath}, rt); code != exitOK {
+		t.Fatalf("sync code=%d out=%s err=%s", code, stdout.String(), stderr.String())
+	}
+	contextRaw, _ := os.ReadFile(filepath.Join(dir, ".uawp", "CONTEXT.md"))
+	if string(contextRaw) != "# Updated context\n" {
+		t.Fatalf("context=%q", contextRaw)
+	}
+
+	rt, stdout, stderr = newRuntime("phase-2\nPhase 2 complete\nyes\n")
+	if code := runWithRuntime([]string{"checkpoint"}, rt); code != exitOK {
+		t.Fatalf("checkpoint code=%d out=%s err=%s", code, stdout.String(), stderr.String())
+	}
+	entries, _ := os.ReadDir(filepath.Join(dir, ".uawp", "checkpoints"))
+	if len(entries) != 1 {
+		t.Fatalf("checkpoint count=%d", len(entries))
+	}
+
+	rt, stdout, stderr = newRuntime("pause for another agent\nyes\n")
+	if code := runWithRuntime([]string{"handoff", "--context-file", contextPath}, rt); code != exitOK {
+		t.Fatalf("handoff code=%d out=%s err=%s", code, stdout.String(), stderr.String())
+	}
+	registry, _, err := loadIdentityRegistry(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, _ := registry.Selected("", true)
+	if _, found := registry.Binding(dir, profile.ProfileID); found {
+		t.Fatal("handoff retained local binding")
+	}
+}
+
+func TestHumanSyncWithoutContextFileDoesNotConsumePromptAsContext(t *testing.T) {
+	dir := initializedCLIWorkspace(t)
+	rt, stdout, stderr, _ := identityRuntime(t, "yes\n")
+	rt.getwd = func() (string, error) { return dir, nil }
+	before, _ := os.ReadFile(filepath.Join(dir, ".uawp", "CONTEXT.md"))
+	if code := runWithRuntime([]string{"sync"}, rt); code != exitUsage {
+		t.Fatalf("code=%d out=%s err=%s", code, stdout.String(), stderr.String())
+	}
+	after, _ := os.ReadFile(filepath.Join(dir, ".uawp", "CONTEXT.md"))
+	if !bytes.Equal(before, after) || !strings.Contains(stderr.String(), "--context-file") {
+		t.Fatalf("out=%s err=%s", stdout.String(), stderr.String())
+	}
+}
 func runCLI(t *testing.T, args []string, want int) []byte {
 	t.Helper()
 	var out, err bytes.Buffer

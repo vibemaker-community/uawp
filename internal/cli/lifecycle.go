@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/uawp/uawp/internal/core"
 	"github.com/uawp/uawp/internal/identity"
@@ -55,11 +54,33 @@ func parseLifecycle(command string, args []string, stderr io.Writer) (lifecycleF
 	return f, true
 }
 
+func lifecycleArgsWithWorkspace(args []string, rt runtime) ([]string, error) {
+	for index, arg := range args {
+		if arg == "--workspace" || strings.HasPrefix(arg, "--workspace=") {
+			if arg == "--workspace" && index+1 >= len(args) {
+				return args, nil
+			}
+			return args, nil
+		}
+	}
+	value, err := rt.getwd()
+	if err != nil {
+		return nil, err
+	}
+	return append(append([]string(nil), args...), "--workspace", value), nil
+}
+
 func runResume(args []string, stdout, stderr io.Writer) int {
 	return runResumeWithRuntime(args, defaultRuntime(stdout, stderr))
 }
 
 func runResumeWithRuntime(args []string, rt runtime) int {
+	var err error
+	args, err = lifecycleArgsWithWorkspace(args, rt)
+	if err != nil {
+		fmt.Fprintf(rt.stderr, "resolve current workspace: %v\n", err)
+		return exitInternal
+	}
 	f, ok := parseLifecycle("resume", args, rt.stderr)
 	if !ok {
 		return exitUsage
@@ -197,16 +218,85 @@ func runGuidedResume(root workspace.Root, f lifecycleFlags, rt runtime) int {
 }
 
 func runLifecycleMutation(command string, args []string, stdout, stderr io.Writer) int {
-	f, ok := parseLifecycle(command, args, stderr)
+	return runLifecycleMutationWithRuntime(command, args, defaultRuntime(stdout, stderr))
+}
+
+type mutationPresentation struct {
+	Command     string
+	Plan        plan.Plan
+	Result      commandOutput
+	Exceptional bool
+}
+
+func presentMutation(rt runtime, surface cliSurface, value mutationPresentation, apply func(plan.Plan) (bool, error)) int {
+	if surface == surfaceHuman && !value.Exceptional {
+		fmt.Fprintf(rt.stdout, "%s preview for %s:\n", value.Command, value.Result.Workspace)
+		for _, change := range value.Result.Preview {
+			fmt.Fprintf(rt.stdout, "  %s\n", change.Path)
+		}
+		fmt.Fprint(rt.stdout, "Apply these changes? [y/N] ")
+		approved, err := confirm(rt.stdin)
+		if err != nil {
+			fmt.Fprintf(rt.stderr, "confirmation failed: %v\n", err)
+			return exitInternal
+		}
+		if !approved {
+			fmt.Fprintln(rt.stdout, "Cancelled; no changes were made.")
+			return exitOK
+		}
+		mutated, err := apply(value.Plan)
+		if err != nil {
+			fmt.Fprintln(rt.stderr, err)
+			return exitInvalidState
+		}
+		value.Result.PlanID, value.Result.Mutated, value.Result.NextAction = "", mutated, "Operation applied and verified."
+		writeOutput(rt.stdout, "text", value.Result)
+		return exitOK
+	}
+	writeOutput(rt.stdout, value.ResultFormat(), value.Result)
+	return exitApprovalRequired
+}
+
+func (value mutationPresentation) ResultFormat() string {
+	if value.Result.PlanID == "" {
+		return "text"
+	}
+	return "json"
+}
+
+func runLifecycleMutationWithRuntime(command string, args []string, rt runtime) int {
+	var err error
+	args, err = lifecycleArgsWithWorkspace(args, rt)
+	if err != nil {
+		fmt.Fprintf(rt.stderr, "resolve current workspace: %v\n", err)
+		return exitInternal
+	}
+	f, ok := parseLifecycle(command, args, rt.stderr)
 	if !ok {
+		return exitUsage
+	}
+	if f.profile != "" && f.worker != "" {
+		fmt.Fprintln(rt.stderr, "choose either --profile or --worker-id, not both")
 		return exitUsage
 	}
 	root, err := workspace.OpenRoot(f.workspace)
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(rt.stderr, err)
 		return exitInternal
 	}
-	generatedAt := time.Now()
+	surface := selectSurface(f.format, rt.stdinTTY, rt.stdoutTTY, f.nonInteractive)
+	if surface == surfaceHuman {
+		rt.stdin = bufio.NewReader(rt.stdin)
+		if (command == "sync" || command == "handoff") && f.contextFile == "" {
+			fmt.Fprintln(rt.stderr, "--context-file PATH is required; terminal confirmation input is never used as context")
+			return exitUsage
+		}
+		if (command == "sync" || command == "handoff") && f.contextFile == "-" {
+			fmt.Fprintln(rt.stderr, "--context-file - cannot share interactive stdin with confirmation; use a file or --non-interactive")
+			return exitUsage
+		}
+	}
+	generatedAt := rt.now()
 	approvedHash := ""
 	if f.approval != "" {
 		generatedAt, approvedHash, err = parseApprovalToken(f.approval)
@@ -214,25 +304,83 @@ func runLifecycleMutation(command string, args []string, stdout, stderr io.Write
 			return exitApprovalRequired
 		}
 	}
+	var registry identity.Registry
+	var registryPath string
+	var selectedProfile identity.Profile
+	actor := core.Actor{WorkerID: f.worker, SessionID: f.session, Generation: f.generation}
+	if command != "recover" && surface == surfaceHuman && f.worker == "" {
+		registry, registryPath, err = loadIdentityRegistry(rt)
+		if err != nil {
+			fmt.Fprintln(rt.stderr, err)
+			return exitInternal
+		}
+		selectedProfile, err = registry.Selected(f.profile, true)
+		if err != nil {
+			fmt.Fprintln(rt.stderr, "run uawp resume first to create/select an identity")
+			return exitUsage
+		}
+		binding, found := registry.Binding(root.Path(), selectedProfile.ProfileID)
+		if !found {
+			fmt.Fprintln(rt.stderr, "run uawp resume first to acquire this Workspace")
+			return exitInvalidState
+		}
+		actor = core.Actor{WorkerID: selectedProfile.WorkerID, SessionID: binding.SessionID, Generation: binding.Generation}
+	} else if command != "recover" {
+		actor, err = resolveMachineActor(f, rt)
+		if err != nil {
+			fmt.Fprintln(rt.stderr, err)
+			return exitUsage
+		}
+	}
+	readPrompt := func(label string) (string, error) {
+		fmt.Fprint(rt.stdout, label)
+		line, readErr := rt.stdin.(*bufio.Reader).ReadString('\n')
+		if readErr != nil && readErr != io.EOF {
+			return "", readErr
+		}
+		value := strings.TrimSpace(line)
+		if value == "" {
+			return "", fmt.Errorf("a value is required")
+		}
+		return value, nil
+	}
+	if surface == surfaceHuman {
+		if command == "checkpoint" && f.milestone == "" {
+			f.milestone, err = readPrompt("Milestone ID: ")
+		}
+		if err == nil && command == "checkpoint" && f.label == "" {
+			f.label, err = readPrompt("Milestone label: ")
+		}
+		if err == nil && (command == "acquire" || command == "handoff") && f.purpose == "" {
+			f.purpose, err = readPrompt("Purpose: ")
+		}
+		if err != nil {
+			fmt.Fprintln(rt.stderr, err)
+			return exitUsage
+		}
+	}
 	var value plan.Plan
 	switch command {
 	case "acquire":
-		value, err = workspace.PlanAcquireAt(root, core.AcquireRequest{WorkerID: f.worker, SessionID: f.session, Agent: f.agent, Purpose: f.purpose, At: generatedAt})
+		agent := f.agent
+		if agent == "" {
+			agent = selectedProfile.DisplayName
+		}
+		value, err = workspace.PlanAcquireAt(root, core.AcquireRequest{WorkerID: actor.WorkerID, SessionID: actor.SessionID, Agent: agent, Purpose: f.purpose, At: generatedAt})
 	case "release":
-		value, err = workspace.PlanReleaseAt(root, core.ReleaseRequest{Actor: core.Actor{WorkerID: f.worker, SessionID: f.session, Generation: f.generation}, At: generatedAt})
+		value, err = workspace.PlanReleaseAt(root, core.ReleaseRequest{Actor: actor, At: generatedAt})
 	case "recover":
 		value, err = workspace.PlanStaleRecoveryAt(root, core.RecoveryRequest{ControllerID: f.controller, Reason: f.reason, At: generatedAt})
 	case "sync", "handoff":
 		var content []byte
 		if f.contextFile == "-" {
-			content, err = io.ReadAll(os.Stdin)
+			content, err = io.ReadAll(rt.stdin)
 		} else if f.contextFile != "" {
 			content, err = os.ReadFile(f.contextFile)
 		} else {
 			err = fmt.Errorf("--context-file is required")
 		}
 		if err == nil {
-			actor := core.Actor{WorkerID: f.worker, SessionID: f.session, Generation: f.generation}
 			if command == "sync" {
 				value, err = workspace.PlanContextSync(root, actor, content)
 			} else {
@@ -240,16 +388,32 @@ func runLifecycleMutation(command string, args []string, stdout, stderr io.Write
 			}
 		}
 	case "checkpoint":
-		value, err = workspace.PlanCheckpointAt(root, workspace.CheckpointRequest{Actor: core.Actor{WorkerID: f.worker, SessionID: f.session, Generation: f.generation}, MilestoneID: f.milestone, Label: f.label, DecisionReferences: f.refs, At: generatedAt})
+		value, err = workspace.PlanCheckpointAt(root, workspace.CheckpointRequest{Actor: actor, MilestoneID: f.milestone, Label: f.label, DecisionReferences: f.refs, At: generatedAt})
 	}
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(rt.stderr, err)
 		return exitInvalidState
 	}
 	token := approvalToken(generatedAt, value.ID)
 	result := commandOutput{SchemaVersion: "1", Command: command, Workspace: root.Path(), PlanID: token, Changes: value.Changes(), Metadata: value.Metadata(), Preview: reviewableChanges(root, value), NextAction: "Review the plan and rerun with --approve " + token}
 	if f.approval == "" {
-		writeOutput(stdout, f.format, result)
+		presentation := mutationPresentation{Command: command, Plan: value, Result: result, Exceptional: command == "recover"}
+		if surface == surfaceHuman && command != "recover" {
+			return presentMutation(rt, surface, presentation, func(candidate plan.Plan) (bool, error) {
+				report, applyErr := workspace.Apply(root, candidate, workspace.ApplyOptions{ApprovedPlanID: candidate.ID})
+				if applyErr != nil {
+					return false, applyErr
+				}
+				if command == "handoff" || command == "release" {
+					registry.RemoveBinding(root.Path(), selectedProfile.ProfileID)
+					if saveErr := identity.Save(registryPath, registry); saveErr != nil {
+						return len(report.Applied) > 0, fmt.Errorf("Workspace release verified but local binding cleanup failed: %w", saveErr)
+					}
+				}
+				return len(report.Applied) > 0, nil
+			})
+		}
+		writeOutput(rt.stdout, f.format, result)
 		return exitApprovalRequired
 	}
 	if approvedHash != value.ID || f.approval != token {
@@ -257,12 +421,12 @@ func runLifecycleMutation(command string, args []string, stdout, stderr io.Write
 	}
 	report, err := workspace.Apply(root, value, workspace.ApplyOptions{ApprovedPlanID: value.ID})
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(rt.stderr, err)
 		return exitInvalidState
 	}
 	result.Mutated = len(report.Applied) > 0
 	result.NextAction = "Operation applied and verified."
-	writeOutput(stdout, f.format, result)
+	writeOutput(rt.stdout, f.format, result)
 	return exitOK
 }
 

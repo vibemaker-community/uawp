@@ -73,7 +73,7 @@ func runWithRuntime(args []string, rt runtime) int {
 	case "resume":
 		return runResumeWithRuntime(args[1:], rt)
 	case "acquire", "release", "sync", "checkpoint", "handoff", "recover":
-		return runLifecycleMutation(args[0], args[1:], rt.stdout, rt.stderr)
+		return runLifecycleMutationWithRuntime(args[0], args[1:], rt)
 	case "upgrade", "repair", "uninstall":
 		return runMaintenance(args[0], args[1:], rt.stdout, rt.stderr)
 	case "transaction":
