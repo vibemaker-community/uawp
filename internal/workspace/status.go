@@ -94,6 +94,9 @@ func Doctor(root Root) DoctorReport {
 }
 
 func diagnose(root Root) StatusReport {
+	if HasPendingPurge(root) {
+		return finding(CodeRecoveryRequired, "error", "A pre-commit purge record is present.", "Use transaction rollback to clear the pending purge after review.")
+	}
 	if tombstone, err := findPurgeTombstone(root); err != nil {
 		return finding(CodeRecoveryRequired, "error", err.Error(), "Resolve the purge tombstone manually before further mutation.")
 	} else if tombstone != "" {

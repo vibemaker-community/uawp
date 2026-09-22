@@ -107,6 +107,8 @@ type Metadata struct {
 	MigrationTo          string `json:"migrationTo,omitempty"`
 	MigrationReceiptPath string `json:"migrationReceiptPath,omitempty"`
 	PurgeExportPath      string `json:"purgeExportPath,omitempty"`
+	PurgeArchiveSHA256   string `json:"purgeArchiveSHA256,omitempty"`
+	PurgeMarkerSHA256    string `json:"purgeMarkerSHA256,omitempty"`
 }
 
 // Input is a read-only project fact on which an approval depends.

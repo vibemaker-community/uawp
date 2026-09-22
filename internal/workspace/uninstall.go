@@ -41,12 +41,17 @@ func PlanUninstallDetachAt(root Root, facts adapter.RuntimeFacts, at time.Time) 
 	if err != nil {
 		return plan.Plan{}, report, err
 	}
+	ownershipBytes, err := os.ReadFile(filepath.Join(root.Path(), ".uawp", "ACTIVE_WORKER.md"))
+	if err != nil {
+		return plan.Plan{}, report, err
+	}
+	inputs := []plan.Input{{Path: ".uawp/ACTIVE_WORKER.md", SHA256: plan.HashBytes(ownershipBytes)}}
 	ids, err := ConfiguredAdapterIDs(root)
 	if err != nil {
 		return plan.Plan{}, report, err
 	}
 	if len(ids) == 0 {
-		return plan.NewForWorkspace("uninstall-detach", root.Path(), nil), report, nil
+		return plan.NewForWorkspaceInputs("uninstall-detach", root.Path(), nil, inputs), report, nil
 	}
 	resolutions, err := ResolveAdapters(root, ids, facts)
 	if err != nil {
@@ -57,12 +62,7 @@ func PlanUninstallDetachAt(root Root, facts adapter.RuntimeFacts, at time.Time) 
 			return plan.Plan{}, report, fmt.Errorf("adapter %s is not safely detachable: %s", resolution.Provider, resolution.Health)
 		}
 	}
-	ownershipBytes, err := os.ReadFile(filepath.Join(root.Path(), ".uawp", "ACTIVE_WORKER.md"))
-	if err != nil {
-		return plan.Plan{}, report, err
-	}
 	var changes []plan.Change
-	inputs := []plan.Input{{Path: ".uawp/ACTIVE_WORKER.md", SHA256: plan.HashBytes(ownershipBytes)}}
 	for _, artifact := range manifest.Integrations {
 		report.ArtifactsRemoved = append(report.ArtifactsRemoved, artifact.Path)
 		report.ConsumersRemoved = append(report.ConsumersRemoved, artifact.Consumers...)

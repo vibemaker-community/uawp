@@ -66,9 +66,17 @@ func TestCommittedPurgeTombstoneCanBeVerifiedAndContinued(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = ApplyPurge(root, p, PurgeOptions{ApplyOptions: ApplyOptions{ApprovedPlanID: p.ID}, Failpoint: func(stage string) error { return errors.New("crash") }})
+	_, err = ApplyPurge(root, p, PurgeOptions{ApplyOptions: ApplyOptions{ApprovedPlanID: p.ID}, Failpoint: func(stage string) error {
+		if stage == "after-rename" {
+			return errors.New("crash")
+		}
+		return nil
+	}})
 	if err == nil || !HasPurgeTombstone(root) {
-		t.Fatalf("err=%v tombstone=%v", err, HasPurgeTombstone(root))
+		tombstone, findErr := findPurgeTombstone(root)
+		marker, markerErr := readPurgeMarker(filepath.Join(tombstone, "PURGE.json"))
+		exported, exportErr := VerifyExportFile(destination)
+		t.Fatalf("err=%v tombstone=%v find=%q/%v marker=%#v/%v export=%#v/%v", err, HasPurgeTombstone(root), tombstone, findErr, marker, markerErr, exported, exportErr)
 	}
 	cleanup, err := PlanPurgeCleanupAt(root, "human-1", "verified archive", time.Now())
 	if err != nil {
@@ -79,5 +87,33 @@ func TestCommittedPurgeTombstoneCanBeVerifiedAndContinued(t *testing.T) {
 	}
 	if HasPurgeTombstone(root) {
 		t.Fatal("tombstone remains")
+	}
+}
+
+func TestPrecommitPurgeInterruptionIsDiscoverableAndRollbackable(t *testing.T) {
+	root := adapterRoot(t)
+	destination := filepath.Join(t.TempDir(), "state.tar.gz")
+	p, _, err := PlanPurgeAt(root, adapter.RuntimeFacts{}, destination, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ApplyPurge(root, p, PurgeOptions{ApplyOptions: ApplyOptions{ApprovedPlanID: p.ID}, Failpoint: func(stage string) error {
+		if stage == "after-marker" {
+			return errors.New("crash")
+		}
+		return nil
+	}})
+	if err == nil || Status(root).Code != CodeRecoveryRequired {
+		t.Fatalf("err=%v status=%#v", err, Status(root))
+	}
+	abort, err := PlanPurgeAbortAt(root, "human-1", "abort incomplete purge", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Apply(root, abort, ApplyOptions{ApprovedPlanID: abort.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if Status(root).Code != CodeReady {
+		t.Fatalf("status=%#v", Status(root))
 	}
 }

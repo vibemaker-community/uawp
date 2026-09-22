@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/uawp/uawp/internal/adapter"
+	"github.com/uawp/uawp/internal/core"
 	"github.com/uawp/uawp/internal/plan"
 )
 
@@ -24,9 +25,11 @@ type PurgeOptions struct {
 	Failpoint    func(string) error
 }
 type purgeMarker struct {
-	SchemaVersion string `json:"schemaVersion"`
-	PlanID        string `json:"planID"`
-	ExportPath    string `json:"exportPath"`
+	SchemaVersion   string `json:"schemaVersion"`
+	PlanID          string `json:"planID"`
+	ExportPath      string `json:"exportPath"`
+	NamespaceSHA256 string `json:"namespaceSHA256"`
+	ArchiveSHA256   string `json:"archiveSHA256,omitempty"`
 }
 
 func PlanPurgeAt(root Root, facts adapter.RuntimeFacts, exportPath string, at time.Time) (plan.Plan, PurgeReport, error) {
@@ -78,27 +81,41 @@ func ApplyPurge(root Root, value plan.Plan, options PurgeOptions) (PurgeReport, 
 	if unlock != nil {
 		defer unlock()
 	}
+	snapshot, err := SnapshotNamespace(root)
+	if err != nil {
+		return report, err
+	}
+	if err := verifyReleasedInput(root, value); err != nil {
+		return report, err
+	}
 	markerPath := filepath.Join(root.Path(), ".uawp", "PURGE.json")
-	markerBytes, _ := json.MarshalIndent(purgeMarker{SchemaVersion: "1", PlanID: value.ID, ExportPath: report.ExportPath}, "", "  ")
+	marker := purgeMarker{SchemaVersion: "1", PlanID: value.ID, ExportPath: report.ExportPath, NamespaceSHA256: snapshot.fingerprint}
+	markerBytes, _ := json.MarshalIndent(marker, "", "  ")
 	markerBytes = append(markerBytes, '\n')
 	if err := writeExclusiveSynced(markerPath, markerBytes, 0o600); err != nil {
 		return report, err
 	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = os.Remove(markerPath)
+	if options.Failpoint != nil {
+		if err := options.Failpoint("after-marker"); err != nil {
+			return report, err
 		}
-	}()
-	snapshot, err := SnapshotNamespace(root)
-	if err != nil {
-		return report, err
 	}
 	exported, err := CreateVerifiedExport(root, report.ExportPath, snapshot)
 	if err != nil {
 		return report, err
 	}
 	report.ArchiveSHA256 = exported.ArchiveSHA256
+	marker.ArchiveSHA256 = exported.ArchiveSHA256
+	markerBytes, _ = json.MarshalIndent(marker, "", "  ")
+	markerBytes = append(markerBytes, '\n')
+	if err := writeReplaceAtomic(markerPath, markerBytes, 0o600); err != nil {
+		return report, err
+	}
+	if options.Failpoint != nil {
+		if err := options.Failpoint("after-export"); err != nil {
+			return report, err
+		}
+	}
 	current, err := SnapshotNamespace(root)
 	if err != nil {
 		return report, err
@@ -113,7 +130,6 @@ func ApplyPurge(root Root, value plan.Plan, options PurgeOptions) (PurgeReport, 
 	if err := os.Rename(filepath.Join(root.Path(), ".uawp"), tombstone); err != nil {
 		return report, err
 	}
-	committed = true
 	if err := syncDir(root.Path()); err != nil {
 		return report, err
 	}
@@ -147,16 +163,29 @@ func PlanPurgeCleanupAt(root Root, controllerID, reason string, at time.Time) (p
 	if err != nil {
 		return plan.Plan{}, err
 	}
-	if _, err := VerifyExportFile(marker.ExportPath); err != nil {
+	exported, err := VerifyExportFile(marker.ExportPath)
+	if err != nil {
 		return plan.Plan{}, fmt.Errorf("verify purge export: %w", err)
 	}
-	metadata := plan.Metadata{ControllerID: controllerID, Reason: reason, TransactionID: filepath.Base(tombstone), RecoveryAction: "CONTINUE", PurgeExportPath: marker.ExportPath}
+	if exported.ArchiveSHA256 != marker.ArchiveSHA256 {
+		return plan.Plan{}, fmt.Errorf("verify purge export: archive hash changed")
+	}
+	markerRaw, _ := os.ReadFile(filepath.Join(tombstone, "PURGE.json"))
+	metadata := plan.Metadata{ControllerID: controllerID, Reason: reason, TransactionID: filepath.Base(tombstone), RecoveryAction: "CONTINUE", PurgeExportPath: marker.ExportPath, PurgeArchiveSHA256: marker.ArchiveSHA256, PurgeMarkerSHA256: plan.HashBytes(markerRaw)}
 	return plan.NewForWorkspaceInputsMetadata("purge-cleanup", root.Path(), nil, nil, metadata), nil
 }
 
 func HasPurgeTombstone(root Root) bool {
 	value, err := findPurgeTombstone(root)
-	return err == nil && value != ""
+	if err != nil || value == "" {
+		return false
+	}
+	marker, err := readPurgeMarker(filepath.Join(value, "PURGE.json"))
+	if err != nil || filepath.Base(value) != ".uawp-purge-"+marker.PlanID[:16] {
+		return false
+	}
+	exported, err := VerifyExportFile(marker.ExportPath)
+	return err == nil && exported.ArchiveSHA256 == marker.ArchiveSHA256
 }
 
 func ApplyPurgeCleanup(root Root, value plan.Plan, approved string) error {
@@ -171,8 +200,16 @@ func ApplyPurgeCleanup(root Root, value plan.Plan, approved string) error {
 	if err != nil || marker.ExportPath != value.Metadata().PurgeExportPath {
 		return fmt.Errorf("purge marker evidence changed")
 	}
-	if _, err := VerifyExportFile(marker.ExportPath); err != nil {
+	markerRaw, _ := os.ReadFile(filepath.Join(tombstone, "PURGE.json"))
+	if plan.HashBytes(markerRaw) != value.Metadata().PurgeMarkerSHA256 {
+		return fmt.Errorf("purge marker changed")
+	}
+	exported, err := VerifyExportFile(marker.ExportPath)
+	if err != nil {
 		return err
+	}
+	if exported.ArchiveSHA256 != value.Metadata().PurgeArchiveSHA256 || marker.ArchiveSHA256 != exported.ArchiveSHA256 {
+		return fmt.Errorf("purge export evidence changed")
 	}
 	if err := os.RemoveAll(tombstone); err != nil {
 		return err
@@ -191,8 +228,46 @@ func readPurgeMarker(path string) (purgeMarker, error) {
 	if err := decoder.Decode(&marker); err != nil {
 		return marker, err
 	}
-	if marker.SchemaVersion != "1" || marker.PlanID == "" || marker.ExportPath == "" {
+	if marker.SchemaVersion != "1" || len(marker.PlanID) < 16 || marker.ExportPath == "" || marker.NamespaceSHA256 == "" {
 		return marker, fmt.Errorf("invalid purge marker")
 	}
 	return marker, nil
+}
+
+func HasPendingPurge(root Root) bool {
+	_, err := os.Lstat(filepath.Join(root.Path(), ".uawp", "PURGE.json"))
+	return err == nil
+}
+
+func PlanPurgeAbortAt(root Root, controllerID, reason string, at time.Time) (plan.Plan, error) {
+	_ = at
+	if controllerID == "" || reason == "" {
+		return plan.Plan{}, fmt.Errorf("controller ID and reason are required")
+	}
+	path := filepath.Join(root.Path(), ".uawp", "PURGE.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return plan.Plan{}, err
+	}
+	if _, err := readPurgeMarker(path); err != nil {
+		return plan.Plan{}, err
+	}
+	change := plan.NewDeleteFile(".uawp/PURGE.json", plan.HashBytes(raw))
+	return plan.NewForWorkspaceInputsMetadata("purge-abort", root.Path(), []plan.Change{change}, nil, plan.Metadata{ControllerID: controllerID, Reason: reason, RecoveryAction: "ROLLBACK"}), nil
+}
+
+func verifyReleasedInput(root Root, value plan.Plan) error {
+	for _, input := range value.Inputs() {
+		if input.Path == ".uawp/ACTIVE_WORKER.md" {
+			if err := verifyInputs(root, []plan.Input{input}); err != nil {
+				return err
+			}
+			ownership, err := readOwnership(filepath.Join(root.Path(), ".uawp", "ACTIVE_WORKER.md"))
+			if err != nil || ownership.Status != core.Released {
+				return fmt.Errorf("purge requires unchanged RELEASED ownership")
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("purge plan does not bind ownership")
 }

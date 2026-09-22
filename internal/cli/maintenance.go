@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/uawp/uawp/internal/adapter"
@@ -79,9 +80,17 @@ func runMaintenance(command string, args []string, stdout, stderr io.Writer) int
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, err)
-		return exitInvalidState
+		return maintenanceErrorExit(err)
 	}
 	return previewOrApplyMaintenance(command, root, f, generatedAt, approvedHash, value, findings, report, stdout, stderr)
+}
+
+func maintenanceErrorExit(err error) int {
+	text := strings.ToLower(err.Error())
+	if strings.Contains(text, "unsafe") || strings.Contains(text, "collision") || strings.Contains(text, "unsupported") || strings.Contains(text, "outside .uawp") {
+		return exitUnsafe
+	}
+	return exitInvalidState
 }
 
 func runTransaction(args []string, stdout, stderr io.Writer) int {
@@ -112,6 +121,11 @@ func runTransaction(args []string, stdout, stderr io.Writer) int {
 				writeOutput(stdout, f.format, result)
 				return exitOK
 			}
+			if workspace.HasPendingPurge(root) {
+				result := commandOutput{SchemaVersion: "1", Command: "transaction status", Workspace: root.Path(), Classification: "ROLLBACK_AVAILABLE", NextAction: "Rollback the pending pre-commit purge record."}
+				writeOutput(stdout, f.format, result)
+				return exitOK
+			}
 			fmt.Fprintln(stderr, statusErr)
 			return exitInvalidState
 		}
@@ -134,6 +148,9 @@ func runTransaction(args []string, stdout, stderr io.Writer) int {
 	var value plan.Plan
 	if action == "rollback" {
 		value, err = workspace.PlanTransactionRollbackAt(root, f.controller, f.reason, generatedAt)
+		if err != nil && workspace.HasPendingPurge(root) {
+			value, err = workspace.PlanPurgeAbortAt(root, f.controller, f.reason, generatedAt)
+		}
 	} else {
 		value, err = workspace.PlanTransactionContinueAt(root, f.controller, f.reason, generatedAt)
 		if err != nil && workspace.HasPurgeTombstone(root) {
@@ -211,6 +228,8 @@ func previewOrApplyTransaction(action string, root workspace.Root, f maintenance
 	if value.Operation == "purge-cleanup" {
 		err = workspace.ApplyPurgeCleanup(root, value, value.ID)
 		applied.Verified = err == nil
+	} else if value.Operation == "purge-abort" {
+		applied, err = workspace.Apply(root, value, workspace.ApplyOptions{ApprovedPlanID: value.ID})
 	} else {
 		applied, err = workspace.ApplyTransactionRecovery(root, value, workspace.ApplyOptions{ApprovedPlanID: value.ID})
 	}

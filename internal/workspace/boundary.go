@@ -96,7 +96,7 @@ func (r Root) resolveNative(relative string) (string, error) {
 func allowedUAWPPath(segments []string) bool {
 	if len(segments) == 1 {
 		switch segments[0] {
-		case "manifest.json", "CONTEXT.md", "ACTIVE_WORKER.md", "DECISIONS.md", "INSTRUCTIONS.md", "RECOVERY.json", "checkpoints", "migrations", "recovery":
+		case "manifest.json", "CONTEXT.md", "ACTIVE_WORKER.md", "DECISIONS.md", "INSTRUCTIONS.md", "RECOVERY.json", "PURGE.json", "checkpoints", "migrations", "recovery":
 			return true
 		}
 	}

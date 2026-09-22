@@ -54,7 +54,7 @@ func SnapshotNamespace(root Root) (NamespaceSnapshot, error) {
 			return err
 		}
 		relative = filepath.ToSlash(relative)
-		if relative == "TRANSACTION.lock" {
+		if relative == "TRANSACTION.lock" || relative == "PURGE.json" {
 			return nil
 		}
 		info, err := os.Lstat(path)

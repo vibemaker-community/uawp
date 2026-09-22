@@ -36,9 +36,13 @@ func PlanRepairAt(root Root, facts adapter.RuntimeFacts, selected []string, at t
 	doctor := Doctor(root)
 	findings := append([]StatusReport(nil), doctor.Findings...)
 	allowGenerated := len(selected) == 0
+	allowNative := len(selected) == 0
 	for _, value := range selected {
 		if value == string(CodeRepairAvailable) || value == "INSTRUCTIONS.md" {
 			allowGenerated = true
+		}
+		if value == "native" {
+			allowNative = true
 		}
 	}
 	var changes []plan.Change
@@ -61,6 +65,9 @@ func PlanRepairAt(root Root, facts adapter.RuntimeFacts, selected []string, at t
 		return plan.Plan{}, findings, statErr
 	}
 	for _, artifact := range inventory.Manifest.Integrations {
+		if !allowNative {
+			continue
+		}
 		if !artifact.CreatedFile || artifact.Mode == core.Direct {
 			continue
 		}
