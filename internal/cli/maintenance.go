@@ -141,7 +141,7 @@ func runTransaction(args []string, stdout, stderr io.Writer) int {
 func previewOrApplyMaintenance(command string, root workspace.Root, f maintenanceFlags, at time.Time, approvedHash string, value plan.Plan, findings []workspace.StatusReport, detail any, stdout, stderr io.Writer) int {
 	token := approvalToken(at, value.ID)
 	result := commandOutput{SchemaVersion: "1", Command: command, Workspace: root.Path(), PlanID: token, Findings: findings, Lifecycle: detail, Changes: value.Changes(), Metadata: value.Metadata(), Preview: reviewableChanges(root, value), NextAction: "Review the plan and rerun with --approve " + token}
-	if len(value.Changes()) == 0 && f.approval == "" {
+	if len(value.Changes()) == 0 && f.approval == "" && !(command == "uninstall" && f.purge) {
 		result.PlanID = ""
 		result.NextAction = "No maintenance changes are required."
 		writeOutput(stdout, f.format, result)

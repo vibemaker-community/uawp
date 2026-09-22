@@ -38,6 +38,19 @@ Read [safe initialization](docs/user/safe-init.md),
 [stale recovery](docs/user/stale-recovery.md), [agent adapters](docs/user/adapters.md),
 and the [v1 state model](docs/protocol/state-v1.md).
 
+Maintenance expert commands are also preview-first:
+
+```bash
+./uawp upgrade --workspace /absolute/project/path --format json
+./uawp repair --workspace /absolute/project/path --format json
+./uawp uninstall --workspace /absolute/project/path --format json
+./uawp transaction status --workspace /absolute/project/path --format json
+```
+
+See [upgrade and repair](docs/user/upgrade-and-repair.md),
+[uninstall and verified export](docs/user/uninstall-and-export.md), and
+[transaction recovery](docs/user/transaction-recovery.md).
+
 The CLI now includes `resume`, `acquire`, `release`, `sync`, `checkpoint`,
 `handoff`, and Human Controller-approved `recover`. The four canonical
 agent-neutral prompts live in `prompts/`.

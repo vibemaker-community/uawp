@@ -15,6 +15,10 @@
   Codex, Claude Code, and Tencent WorkBuddy.
 - Preview/approve `adapter list|add|remove`, shared bridge consumers, dynamic
   entry-health diagnostics, and adapter authoring/user documentation.
+- Exact `1.0.0` to `1.1.0` state migration with migration receipts.
+- Durable transaction journals, backups, classification, rollback, and continuation.
+- Evidence-limited repair, full provider detach, and verified-export purge.
+- Expert commands: `upgrade`, `repair`, `uninstall`, and `transaction`.
 
 ### Safety
 

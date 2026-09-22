@@ -1,5 +1,7 @@
 # Diagnostics
 
+`status` returns the primary workspace condition. `doctor` aggregates stable maintenance findings, including `UPGRADE_AVAILABLE`, `MAINTENANCE_BLOCKED_ACTIVE`, `REPAIR_AVAILABLE`, and `MANUAL_REPAIR_REQUIRED`, without writing any file. Adapter drift and a live transaction remain errors. See [upgrade and repair](upgrade-and-repair.md) and [transaction recovery](transaction-recovery.md).
+
 `uawp status` reports whether a workspace is ready for resume. `uawp doctor`
 uses the same read-only integrity checks in this increment. Neither command
 creates, repairs, upgrades, or deletes files.

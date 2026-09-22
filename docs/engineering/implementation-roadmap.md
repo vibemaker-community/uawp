@@ -1,6 +1,6 @@
 # UAWP v1.0 Implementation Roadmap
 
-**Status:** Plans 1-3 implemented; Plan 4 design approved and planning; Plans 4-5 remain
+**Status:** Plans 1-4 implemented; Plan 4.5 is next; Plan 5 remains pending
 **Spec:** `docs/superpowers/specs/2026-09-21-uawp-product-engineering-design.md`
 
 The product specification spans several independently reviewable subsystems.
@@ -50,6 +50,10 @@ reinstall, drift repair reports, and interrupted-transaction recovery.
 
 **Deliverable:** supported version transitions and removal paths preserve all
 project-owned content.
+
+**Status:** Implemented with exact `1.0.0` to `1.1.0` migration, durable
+transaction recovery, evidence-limited repair, state-preserving detach, and
+verified-export purge.
 
 **Design:**
 `docs/superpowers/specs/2026-09-22-upgrade-uninstall-transaction-recovery-design.md`
