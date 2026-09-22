@@ -39,6 +39,11 @@
           },
           "createdFile": { "type": "boolean" },
           "inserted": { "type": "boolean" },
+          "insertedImports": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$" }
+          },
           "artifactSHA256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "outsideContentSHA256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
         }

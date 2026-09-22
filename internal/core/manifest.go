@@ -33,6 +33,7 @@ type IntegrationArtifact struct {
 	ConsumerFacts        map[string]map[string]string `json:"consumerFacts,omitempty"`
 	CreatedFile          bool                         `json:"createdFile"`
 	Inserted             bool                         `json:"inserted,omitempty"`
+	InsertedImports      []string                     `json:"insertedImports,omitempty"`
 	ArtifactSHA256       string                       `json:"artifactSHA256"`
 	OutsideContentSHA256 string                       `json:"outsideContentSHA256,omitempty"`
 }
@@ -181,6 +182,13 @@ func validateIntegration(a IntegrationArtifact) error {
 		if !seen[consumer] {
 			return fmt.Errorf("facts provided for unregistered consumer %q", consumer)
 		}
+	}
+	seenImports := map[string]bool{}
+	for _, target := range a.InsertedImports {
+		if target == "" || strings.Contains(target, "\\") || strings.HasPrefix(target, "/") || path.Clean(target) != target || target == "." || strings.HasPrefix(target, "../") || seenImports[target] {
+			return fmt.Errorf("invalid or duplicate inserted import %q", target)
+		}
+		seenImports[target] = true
 	}
 	return nil
 }

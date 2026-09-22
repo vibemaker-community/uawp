@@ -131,6 +131,10 @@ func planAdapterAddAt(root Root, id string, a adapter.Adapter, facts adapter.Run
 	created := resolution.Route.Create
 	outsideHash := plan.HashBytes(before)
 	inserted := resolution.Route.Mode == core.ManagedBlock
+	var insertedImports []string
+	if existing != nil {
+		insertedImports = append(insertedImports, existing.InsertedImports...)
+	}
 	if existing != nil {
 		if existing.Mode != resolution.Route.Mode || existing.Target != resolution.Route.Target {
 			return plan.Plan{}, resolution, fmt.Errorf("existing artifact conflicts with resolved route")
@@ -156,14 +160,21 @@ func planAdapterAddAt(root Root, id string, a adapter.Adapter, facts adapter.Run
 		outsideHash = meta.OutsideSHA256
 	case core.Import:
 		if resolution.Route.Create && hasFinding(resolution.Findings, "CLAUDE_CREATION_CHANGES_SELECTION") {
-			after, _, err = adapter.UpsertImport(after, "AGENTS.md")
+			var preservationInserted bool
+			after, preservationInserted, err = adapter.UpsertImport(after, "AGENTS.md")
 			if err != nil {
 				return plan.Plan{}, resolution, err
+			}
+			if preservationInserted {
+				insertedImports = appendUniqueString(insertedImports, "AGENTS.md")
 			}
 		}
 		after, inserted, err = adapter.UpsertImport(after, resolution.Route.Target)
 		if err != nil {
 			return plan.Plan{}, resolution, err
+		}
+		if inserted {
+			insertedImports = appendUniqueString(insertedImports, resolution.Route.Target)
 		}
 	case core.Direct:
 		created = false
@@ -183,7 +194,7 @@ func planAdapterAddAt(root Root, id string, a adapter.Adapter, facts adapter.Run
 	if values := flattenFacts(facts, id); len(values) > 0 {
 		consumerFacts[id] = values
 	}
-	artifact := core.IntegrationArtifact{ID: adapter.ArtifactID(resolution.Route.Path), Path: resolution.Route.Path, Mode: resolution.Route.Mode, Target: resolution.Route.Target, Consumers: consumers, ConsumerFacts: consumerFacts, CreatedFile: created, Inserted: inserted, ArtifactSHA256: plan.HashBytes(after), OutsideContentSHA256: outsideHash}
+	artifact := core.IntegrationArtifact{ID: adapter.ArtifactID(resolution.Route.Path), Path: resolution.Route.Path, Mode: resolution.Route.Mode, Target: resolution.Route.Target, Consumers: consumers, ConsumerFacts: consumerFacts, CreatedFile: created, Inserted: inserted, InsertedImports: insertedImports, ArtifactSHA256: plan.HashBytes(after), OutsideContentSHA256: outsideHash}
 	if idx >= 0 {
 		manifest.Integrations[idx] = artifact
 	} else {
@@ -364,8 +375,17 @@ func detachConsumer(root Root, manifest *core.Manifest, index int, id string) (*
 		after = nil
 	} else if art.Mode == core.ManagedBlock {
 		after, err = adapter.RemoveManagedBlock(before, adapter.BlockSpec{ArtifactID: art.ID, Target: art.Target, Consumers: art.Consumers, Body: adapter.BridgeBody()})
-	} else if art.Mode == core.Import && len(remaining) == 0 && art.Inserted {
-		after, _, err = adapter.RemoveImport(before, art.Target)
+	} else if art.Mode == core.Import && len(remaining) == 0 {
+		ownedImports := append([]string(nil), art.InsertedImports...)
+		if len(ownedImports) == 0 && art.Inserted {
+			ownedImports = []string{art.Target}
+		}
+		for _, target := range ownedImports {
+			after, _, err = adapter.RemoveImport(after, target)
+			if err != nil {
+				break
+			}
+		}
 	}
 	if err != nil {
 		return nil, nil, err
@@ -407,6 +427,12 @@ func contains(items []string, want string) bool {
 		}
 	}
 	return false
+}
+func appendUniqueString(items []string, value string) []string {
+	if contains(items, value) {
+		return items
+	}
+	return append(items, value)
 }
 func removeConsumer(items []string, id string) []string {
 	out := []string{}

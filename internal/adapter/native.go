@@ -34,6 +34,15 @@ func DiscoverSnapshot(root string, candidates []string, version string, options 
 		full := filepath.Join(canonical, filepath.FromSlash(name))
 		info, err := os.Lstat(full)
 		fact := FileFact{Path: name}
+		unsafeAncestor, ancestorErr := hasUnsafeCandidateAncestor(canonical, full)
+		if ancestorErr != nil {
+			return Snapshot{}, ancestorErr
+		}
+		if unsafeAncestor {
+			fact.State = FileUnsafe
+			s.Files[name] = fact
+			continue
+		}
 		if os.IsNotExist(err) {
 			fact.State = FileMissing
 			s.Files[name] = fact
@@ -72,4 +81,27 @@ func DiscoverSnapshot(root string, candidates []string, version string, options 
 		s.Files[name] = fact
 	}
 	return s, nil
+}
+
+func hasUnsafeCandidateAncestor(root, target string) (bool, error) {
+	relative, err := filepath.Rel(root, target)
+	if err != nil {
+		return false, err
+	}
+	parts := strings.Split(relative, string(filepath.Separator))
+	current := root
+	for _, part := range parts[:len(parts)-1] {
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return true, nil
+		}
+	}
+	return false, nil
 }

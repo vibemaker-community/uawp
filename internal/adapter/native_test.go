@@ -3,6 +3,7 @@ package adapter
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -36,6 +37,30 @@ func TestDiscoveryClassifiesNativeInputs(t *testing.T) {
 	}
 	if s.Options["setting"] != "" {
 		t.Fatal("option changed")
+	}
+}
+
+func TestDiscoveryRejectsSymlinkedCandidateAncestor(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation commonly requires elevated privileges")
+	}
+	root, outside := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(outside, "api"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outside, "api", "AGENTS.md"), []byte("external secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "services")); err != nil {
+		t.Skip(err)
+	}
+	snapshot, err := DiscoverSnapshot(root, []string{"services/api/AGENTS.md"}, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fact := snapshot.Files["services/api/AGENTS.md"]
+	if fact.State != FileUnsafe || len(fact.Content) != 0 {
+		t.Fatalf("fact=%#v", fact)
 	}
 }
 
