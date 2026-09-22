@@ -25,18 +25,19 @@ const (
 )
 
 type commandOutput struct {
-	SchemaVersion string                   `json:"schemaVersion"`
-	Command       string                   `json:"command"`
-	Workspace     string                   `json:"workspace"`
-	PlanID        string                   `json:"planID,omitempty"`
-	Findings      []workspace.StatusReport `json:"findings"`
-	Adapters      []adapter.Resolution     `json:"adapters,omitempty"`
-	Lifecycle     any                      `json:"lifecycle,omitempty"`
-	Metadata      plan.Metadata            `json:"metadata,omitempty"`
-	Preview       []previewChange          `json:"preview,omitempty"`
-	Changes       []plan.Change            `json:"changes"`
-	Mutated       bool                     `json:"mutated"`
-	NextAction    string                   `json:"nextAction"`
+	SchemaVersion  string                   `json:"schemaVersion"`
+	Command        string                   `json:"command"`
+	Workspace      string                   `json:"workspace"`
+	PlanID         string                   `json:"planID,omitempty"`
+	Findings       []workspace.StatusReport `json:"findings"`
+	Adapters       []adapter.Resolution     `json:"adapters,omitempty"`
+	Lifecycle      any                      `json:"lifecycle,omitempty"`
+	Metadata       plan.Metadata            `json:"metadata,omitempty"`
+	Preview        []previewChange          `json:"preview,omitempty"`
+	Changes        []plan.Change            `json:"changes"`
+	Mutated        bool                     `json:"mutated"`
+	NextAction     string                   `json:"nextAction"`
+	Classification any                      `json:"classification,omitempty"`
 }
 
 type previewChange struct {
@@ -64,6 +65,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runResume(args[1:], stdout, stderr)
 	case "acquire", "release", "sync", "checkpoint", "handoff", "recover":
 		return runLifecycleMutation(args[0], args[1:], stdout, stderr)
+	case "upgrade", "repair", "uninstall":
+		return runMaintenance(args[0], args[1:], stdout, stderr)
+	case "transaction":
+		return runTransaction(args[1:], stdout, stderr)
 	default:
 		return usage(stderr)
 	}
@@ -126,11 +131,13 @@ func runDiagnostic(command string, args []string, stdout, stderr io.Writer) int 
 		return exitInternal
 	}
 	report := workspace.Status(root)
+	findings := []workspace.StatusReport{report}
 	if command == "doctor" {
 		doctor := workspace.Doctor(root)
 		report = doctor.StatusReport
+		findings = doctor.Findings
 	}
-	result := commandOutput{SchemaVersion: "1", Command: command, Workspace: root.Path(), Findings: []workspace.StatusReport{report}, NextAction: report.NextAction}
+	result := commandOutput{SchemaVersion: "1", Command: command, Workspace: root.Path(), Findings: findings, NextAction: report.NextAction}
 	if report.Code == workspace.CodeReady || report.Code == workspace.CodeActiveOwner {
 		ids, idsErr := workspace.ConfiguredAdapterIDs(root)
 		if idsErr != nil {
@@ -235,6 +242,6 @@ func parseApprovalToken(token string) (time.Time, string, error) {
 }
 
 func usage(stderr io.Writer) int {
-	fmt.Fprintln(stderr, "usage: uawp <version|init|adapter|status|doctor|resume|acquire|release|sync|checkpoint|handoff|recover>")
+	fmt.Fprintln(stderr, "usage: uawp <version|init|adapter|status|doctor|resume|acquire|release|sync|checkpoint|handoff|recover|upgrade|repair|uninstall|transaction>")
 	return exitUsage
 }
