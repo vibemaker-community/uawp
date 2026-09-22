@@ -1,6 +1,6 @@
 # UAWP Upgrade, Uninstall, Repair, and Transaction Recovery Design
 
-**Document status:** Pending written-spec review
+**Document status:** Approved
 
 **Version:** 0.1
 

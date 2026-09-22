@@ -1,6 +1,6 @@
 # UAWP v1.0 Implementation Roadmap
 
-**Status:** Plans 1-3 implemented; Plan 4 design in review; Plans 4-5 remain
+**Status:** Plans 1-3 implemented; Plan 4 design approved and planning; Plans 4-5 remain
 **Spec:** `docs/superpowers/specs/2026-09-21-uawp-product-engineering-design.md`
 
 The product specification spans several independently reviewable subsystems.
