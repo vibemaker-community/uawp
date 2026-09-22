@@ -48,6 +48,18 @@ func Load(path string) (Registry, error) {
 	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 		return Registry{}, fmt.Errorf("identity registry is not a regular file")
 	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
+		return Registry{}, fmt.Errorf("identity registry permissions must not allow group or world access")
+	}
+	if runtime.GOOS != "windows" {
+		parent, parentErr := os.Stat(filepath.Dir(path))
+		if parentErr != nil {
+			return Registry{}, parentErr
+		}
+		if !parent.IsDir() || parent.Mode().Perm()&0o077 != 0 {
+			return Registry{}, fmt.Errorf("identity registry directory permissions must be private")
+		}
+	}
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return Registry{}, err
@@ -87,6 +99,15 @@ func Save(path string, value Registry) error {
 	parent := filepath.Dir(path)
 	if err := os.MkdirAll(parent, 0o700); err != nil {
 		return err
+	}
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(parent)
+		if err != nil {
+			return err
+		}
+		if info.Mode().Perm()&0o077 != 0 {
+			return fmt.Errorf("identity registry directory permissions must be private")
+		}
 	}
 	encoded, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {

@@ -2,8 +2,12 @@ package cli
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
+	"os"
+	"strings"
 	"testing"
+	"time"
 )
 
 type cliOutput struct {
@@ -44,7 +48,6 @@ func TestExitCategories(t *testing.T) {
 		want int
 	}{
 		{"unknown command", []string{"unknown"}, 2},
-		{"missing workspace", []string{"status"}, 2},
 		{"unexpected root failure", []string{"status", "--workspace", "/definitely/not/a/uawp/workspace"}, 10},
 	}
 	for _, tt := range tests {
@@ -54,5 +57,14 @@ func TestExitCategories(t *testing.T) {
 				t.Fatalf("Run(%q)=%d stderr=%q, want %d", tt.args, got, stderr.String(), tt.want)
 			}
 		})
+	}
+}
+
+func TestStatusDefaultsToCurrentDirectory(t *testing.T) {
+	dir := initializedCLIWorkspace(t)
+	var stdout, stderr bytes.Buffer
+	rt := runtime{stdin: strings.NewReader(""), stdout: &stdout, stderr: &stderr, getwd: func() (string, error) { return dir, nil }, userConfigDir: os.UserConfigDir, now: time.Now, random: rand.Reader}
+	if code := runWithRuntime([]string{"status", "--format", "json"}, rt); code != exitOK {
+		t.Fatalf("code=%d stderr=%s", code, stderr.String())
 	}
 }

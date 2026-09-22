@@ -1,6 +1,9 @@
 package cli
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestSurfaceSelectionFailsClosed(t *testing.T) {
 	tests := []struct {
@@ -19,5 +22,16 @@ func TestSurfaceSelectionFailsClosed(t *testing.T) {
 				t.Fatalf("surface=%s human=%t", got, tt.human)
 			}
 		})
+	}
+}
+
+func TestDevNullIsNotATerminal(t *testing.T) {
+	file, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	if isTerminalFile(file) {
+		t.Fatal("/dev/null classified as terminal")
 	}
 }

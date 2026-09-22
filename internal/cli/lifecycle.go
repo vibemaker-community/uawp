@@ -94,13 +94,19 @@ func runResumeWithRuntime(args []string, rt runtime) int {
 		return exitInternal
 	}
 	surface := selectSurface(f.format, rt.stdinTTY, rt.stdoutTTY, f.nonInteractive)
-	if surface == surfaceHuman && f.worker == "" {
+	if surface == surfaceHuman && f.worker == "" && !(f.profile != "" && f.session != "") && f.approval == "" {
 		return runGuidedResume(root, f, rt)
 	}
 	actor, actorErr := resolveMachineActor(f, rt)
 	if actorErr != nil {
-		fmt.Fprintln(rt.stderr, actorErr)
-		return exitUsage
+		code := codeIdentityRequired
+		if f.worker != "" && f.session == "" {
+			code = codeSessionRequired
+		}
+		if f.profile != "" {
+			code = codeProfileAmbiguous
+		}
+		return writeLifecycleFailure(rt, f.format, "resume", root.Path(), code, actorErr.Error(), exitUsage)
 	}
 	report, err := workspace.Resume(root, actor)
 	if err != nil {
@@ -109,6 +115,15 @@ func runResumeWithRuntime(args []string, rt runtime) int {
 	}
 	writeOutput(rt.stdout, f.format, resumeOutput(root, actor, report))
 	return exitOK
+}
+
+func writeLifecycleFailure(rt runtime, format, command, workspacePath, code, next string, exitCode int) int {
+	if format == "json" {
+		writeOutput(rt.stdout, format, commandOutput{SchemaVersion: "1", Command: command, Workspace: workspacePath, Code: code, NextAction: next})
+	} else {
+		fmt.Fprintln(rt.stderr, next)
+	}
+	return exitCode
 }
 
 func resumeOutput(root workspace.Root, actor core.Actor, report workspace.ResumeReport) commandOutput {
@@ -204,7 +219,7 @@ func runGuidedResume(root workspace.Root, f lifecycleFlags, rt runtime) int {
 		fmt.Fprintln(rt.stderr, err)
 		return exitInvalidState
 	}
-	fmt.Fprintf(rt.stdout, "Ownership preview: %s will become ACTIVE for Session %s. Continue? [y/N] ", profile.DisplayName, actor.SessionID)
+	fmt.Fprintf(rt.stdout, "Ownership preview for %s: %s will become ACTIVE for Session %s. Continue? [y/N] ", root.Path(), profile.DisplayName, actor.SessionID)
 	approved, err := confirm(confirmationInput)
 	if err != nil {
 		fmt.Fprintf(rt.stderr, "confirmation failed: %v\n", err)
@@ -243,7 +258,7 @@ func presentMutation(rt runtime, surface cliSurface, value mutationPresentation,
 	if surface == surfaceHuman && !value.Exceptional {
 		fmt.Fprintf(rt.stdout, "%s preview for %s:\n", value.Command, value.Result.Workspace)
 		for _, change := range value.Result.Preview {
-			fmt.Fprintf(rt.stdout, "  %s\n", change.Path)
+			fmt.Fprintf(rt.stdout, "  %s\n--- before ---\n%s\n--- after ---\n%s\n", change.Path, change.Before, change.After)
 		}
 		fmt.Fprint(rt.stdout, "Apply these changes? [y/N] ")
 		approved, err := confirm(rt.stdin)
@@ -319,7 +334,8 @@ func runLifecycleMutationWithRuntime(command string, args []string, rt runtime) 
 	var registryPath string
 	var selectedProfile identity.Profile
 	actor := core.Actor{WorkerID: f.worker, SessionID: f.session, Generation: f.generation}
-	if command != "recover" && surface == surfaceHuman && f.worker == "" {
+	useBinding := command != "recover" && surface == surfaceHuman && f.worker == "" && !(f.profile != "" && f.session != "") && f.approval == ""
+	if useBinding {
 		registry, registryPath, err = loadIdentityRegistry(rt)
 		if err != nil {
 			fmt.Fprintln(rt.stderr, err)
@@ -339,8 +355,24 @@ func runLifecycleMutationWithRuntime(command string, args []string, rt runtime) 
 	} else if command != "recover" {
 		actor, err = resolveMachineActor(f, rt)
 		if err != nil {
-			fmt.Fprintln(rt.stderr, err)
-			return exitUsage
+			code := codeIdentityRequired
+			if f.worker != "" && f.session == "" {
+				code = codeSessionRequired
+			}
+			if f.profile != "" {
+				code = codeProfileAmbiguous
+			}
+			return writeLifecycleFailure(rt, f.format, command, root.Path(), code, err.Error(), exitUsage)
+		}
+		if f.profile != "" {
+			registry, registryPath, err = loadIdentityRegistry(rt)
+			if err != nil {
+				return writeLifecycleFailure(rt, f.format, command, root.Path(), codeIdentityRequired, err.Error(), exitInternal)
+			}
+			selectedProfile, err = registry.Selected(f.profile, false)
+			if err != nil {
+				return writeLifecycleFailure(rt, f.format, command, root.Path(), codeProfileAmbiguous, err.Error(), exitUsage)
+			}
 		}
 	}
 	readPrompt := func(label string) (string, error) {
@@ -406,8 +438,18 @@ func runLifecycleMutationWithRuntime(command string, args []string, rt runtime) 
 			writeOutput(rt.stdout, f.format, commandOutput{SchemaVersion: "1", Command: command, Workspace: root.Path(), WorkerID: actor.WorkerID, SessionID: actor.SessionID, OwnershipGeneration: actor.Generation, Code: codeApprovalDrift, NextAction: "Workspace or actor state changed; request a new preview."})
 			return exitApprovalRequired
 		}
-		fmt.Fprintln(rt.stderr, err)
-		return exitInvalidState
+		code := ""
+		if command != "acquire" && command != "recover" {
+			if report, resumeErr := workspace.Resume(root, actor); resumeErr == nil {
+				if report.Outcome == workspace.ResumeBlockedBySession {
+					code = codeActiveOtherSession
+				}
+				if report.Outcome == workspace.ResumeBlockedByOther {
+					code = codeActiveOtherWorker
+				}
+			}
+		}
+		return writeLifecycleFailure(rt, f.format, command, root.Path(), code, err.Error(), exitInvalidState)
 	}
 	token := approvalToken(generatedAt, value.ID)
 	metadata := value.Metadata()
@@ -420,7 +462,7 @@ func runLifecycleMutationWithRuntime(command string, args []string, rt runtime) 
 				if applyErr != nil {
 					return false, applyErr
 				}
-				if command == "handoff" || command == "release" {
+				if (command == "handoff" || command == "release") && registryPath != "" && selectedProfile.ProfileID != "" {
 					registry.RemoveBinding(root.Path(), selectedProfile.ProfileID)
 					if saveErr := identity.Save(registryPath, registry); saveErr != nil {
 						return len(report.Applied) > 0, fmt.Errorf("Workspace release verified but local binding cleanup failed: %w", saveErr)

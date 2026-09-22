@@ -60,6 +60,16 @@ func TestValidateOwnershipRequiresConsistentSessionTuple(t *testing.T) {
 	}
 }
 
+func TestValidateOwnershipRejectsReservedNoneSession(t *testing.T) {
+	at := time.Date(2026, 9, 22, 10, 0, 0, 0, time.UTC)
+	for _, session := range []string{"none", "NONE", " None "} {
+		value := Ownership{Status: Active, WorkerID: "worker-a", SessionID: session, Generation: 1, Agent: "Agent", AcquiredAt: at, Purpose: "work"}
+		if err := ValidateOwnership(value); err == nil {
+			t.Fatalf("accepted reserved Session ID %q", session)
+		}
+	}
+}
+
 func TestTimestampRoundTripPreservesOffset(t *testing.T) {
 	want := time.Date(2026, 9, 21, 22, 30, 0, 0, time.FixedZone("UTC+8", 8*3600))
 	encoded := FormatTimestamp(want)

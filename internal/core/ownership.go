@@ -38,6 +38,9 @@ func ValidateOwnership(value Ownership) error {
 		return newDomainError(ErrInvalidState, "worker ID is required")
 	}
 	sessionID := strings.TrimSpace(value.SessionID)
+	if strings.EqualFold(sessionID, "none") {
+		return newDomainError(ErrInvalidState, "session ID uses reserved value none")
+	}
 	if value.Status == Active && (sessionID == "" || value.Generation == 0) {
 		return newDomainError(ErrInvalidState, "ACTIVE ownership requires a session ID and positive generation")
 	}

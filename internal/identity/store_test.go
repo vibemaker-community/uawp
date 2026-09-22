@@ -88,6 +88,22 @@ func TestLoadRejectsSymlink(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsGroupOrWorldAccessibleRegistry(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits are not portable on Windows")
+	}
+	path := DefaultPath(t.TempDir())
+	if err := Save(path, sampleRegistry()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "permissions") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestSelectedAndBindingsUseIDsNotDisplayNames(t *testing.T) {
 	registry := sampleRegistry()
 	selected, err := registry.Selected("", true)

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/uawp/uawp/internal/core"
+	"github.com/uawp/uawp/internal/identity"
 )
 
 func initializedCLIWorkspace(t *testing.T) string {
@@ -196,6 +197,101 @@ func TestAutomationResumeClassifiesOtherSessionAndOtherWorker(t *testing.T) {
 		if err := json.Unmarshal(raw, &result); err != nil || result.Code != test.code {
 			t.Fatalf("actor=%s/%s output=%s err=%v", test.worker, test.session, raw, err)
 		}
+	}
+}
+
+func TestAutomationMissingSessionReturnsOneStructuredError(t *testing.T) {
+	dir := initializedCLIWorkspace(t)
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"resume", "--workspace", dir, "--worker-id", "worker-a", "--format", "json"}, &stdout, &stderr); code != exitUsage {
+		t.Fatalf("code=%d stderr=%s", code, stderr.String())
+	}
+	var result struct {
+		Code    string `json:"code"`
+		Mutated bool   `json:"mutated"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
+	if err := decoder.Decode(&result); err != nil || result.Code != codeSessionRequired || result.Mutated {
+		t.Fatalf("result=%#v err=%v output=%s", result, err, stdout.String())
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		t.Fatalf("extra output: %v", err)
+	}
+}
+
+func TestHumanSyncPreviewShowsReplacementContent(t *testing.T) {
+	dir := initializedCLIWorkspace(t)
+	rt, _, _, _ := identityRuntime(t, "Rock\nyes\n")
+	rt.getwd = func() (string, error) { return dir, nil }
+	if code := runWithRuntime([]string{"resume"}, rt); code != exitOK {
+		t.Fatalf("resume code=%d", code)
+	}
+	contextPath := filepath.Join(t.TempDir(), "context.md")
+	if err := os.WriteFile(contextPath, []byte("# Exact replacement\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	rt.stdout, rt.stderr, rt.stdin = &stdout, &stderr, strings.NewReader("no\n")
+	if code := runWithRuntime([]string{"sync", "--context-file", contextPath}, rt); code != exitOK {
+		t.Fatalf("code=%d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "# Exact replacement") || !strings.Contains(stdout.String(), dir) {
+		t.Fatalf("preview=%s", stdout.String())
+	}
+}
+
+func TestHumanExplicitReleaseDoesNotRequireLocalRegistry(t *testing.T) {
+	dir := initializedCLIWorkspace(t)
+	args := []string{"acquire", "--workspace", dir, "--worker-id", "worker-a", "--session-id", "session-a", "--agent", "A", "--purpose", "work", "--format", "json"}
+	token := decodePlanToken(t, runCLI(t, args, exitApprovalRequired))
+	runCLI(t, append(args, "--approve", token), exitOK)
+	var stdout, stderr bytes.Buffer
+	rt := runtime{stdin: strings.NewReader("yes\n"), stdout: &stdout, stderr: &stderr, getwd: func() (string, error) { return dir, nil }, userConfigDir: func() (string, error) { return t.TempDir(), nil }, now: time.Now, random: bytes.NewReader(make([]byte, 64)), stdinTTY: true, stdoutTTY: true}
+	if code := runWithRuntime([]string{"release", "--worker-id", "worker-a", "--session-id", "session-a", "--generation", "1"}, rt); code != exitOK {
+		t.Fatalf("code=%d stderr=%s", code, stderr.String())
+	}
+}
+
+func TestHumanExplicitProfileSessionIsNotReplacedByBinding(t *testing.T) {
+	dir := initializedCLIWorkspace(t)
+	rt, stdout, stderr, config := identityRuntime(t, "")
+	if code := runWithRuntime([]string{"identity", "create", "--name", "A", "--format", "json"}, rt); code != exitOK {
+		t.Fatalf("identity code=%d", code)
+	}
+	var created struct {
+		Profile struct{ ProfileID, WorkerID string } `json:"profile"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"acquire", "--workspace", dir, "--worker-id", created.Profile.WorkerID, "--session-id", "session-a", "--agent", "A", "--purpose", "work", "--format", "json"}
+	token := decodePlanToken(t, runCLI(t, args, exitApprovalRequired))
+	runCLI(t, append(args, "--approve", token), exitOK)
+	registry, path, err := loadIdentityRegistry(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry.UpsertBinding(identity.SessionBinding{Workspace: dir, ProfileID: created.Profile.ProfileID, SessionID: "session-a", Generation: 1})
+	if err := identity.Save(path, registry); err != nil {
+		t.Fatal(err)
+	}
+	contextPath := filepath.Join(config, "context.md")
+	if err := os.WriteFile(contextPath, []byte("# next\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	rt.stdin = strings.NewReader("no\n")
+	if code := runWithRuntime([]string{"sync", "--workspace", dir, "--profile", created.Profile.ProfileID, "--session-id", "session-b", "--generation", "1", "--context-file", contextPath}, rt); code == exitOK {
+		t.Fatalf("explicit conflicting Session was replaced by binding; output=%s", stdout.String())
+	}
+	contextRaw, err := os.ReadFile(filepath.Join(dir, ".uawp", "CONTEXT.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(contextRaw, []byte("# next")) {
+		t.Fatalf("conflicting explicit Session mutated context: out=%s err=%s", stdout.String(), stderr.String())
 	}
 }
 func runCLI(t *testing.T, args []string, want int) []byte {

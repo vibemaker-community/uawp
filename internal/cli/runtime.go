@@ -36,6 +36,9 @@ func defaultRuntime(stdout, stderr io.Writer) runtime {
 }
 
 func isTerminalFile(file *os.File) bool {
+	if file == nil || file.Name() == os.DevNull {
+		return false
+	}
 	info, err := file.Stat()
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
@@ -69,15 +72,27 @@ func runWithRuntime(args []string, rt runtime) int {
 	case "adapter":
 		return runAdapter(args[1:], rt.stdout, rt.stderr)
 	case "status", "doctor":
-		return runDiagnostic(args[0], args[1:], rt.stdout, rt.stderr)
+		workspaceArgs, err := lifecycleArgsWithWorkspace(args[1:], rt)
+		if err != nil {
+			return exitInternal
+		}
+		return runDiagnostic(args[0], workspaceArgs, rt.stdout, rt.stderr)
 	case "resume":
 		return runResumeWithRuntime(args[1:], rt)
 	case "acquire", "release", "sync", "checkpoint", "handoff", "recover":
 		return runLifecycleMutationWithRuntime(args[0], args[1:], rt)
 	case "upgrade", "repair", "uninstall":
-		return runMaintenance(args[0], args[1:], rt.stdout, rt.stderr)
+		workspaceArgs, err := lifecycleArgsWithWorkspace(args[1:], rt)
+		if err != nil {
+			return exitInternal
+		}
+		return runMaintenance(args[0], workspaceArgs, rt.stdout, rt.stderr)
 	case "transaction":
-		return runTransaction(args[1:], rt.stdout, rt.stderr)
+		workspaceArgs, err := lifecycleArgsWithWorkspace(args[1:], rt)
+		if err != nil {
+			return exitInternal
+		}
+		return runTransaction(workspaceArgs, rt.stdout, rt.stderr)
 	default:
 		return usage(rt.stderr)
 	}
