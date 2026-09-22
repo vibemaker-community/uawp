@@ -101,6 +101,43 @@ func TestDoctorReportMatrixIsReadOnly(t *testing.T) {
 	}
 }
 
+func TestDoctorMaintenanceAggregatesRepairAndManualFindings(t *testing.T) {
+	root := openTempRoot(t)
+	initializeFixture(t, root)
+	if err := os.Remove(filepath.Join(root.Path(), ".uawp", "INSTRUCTIONS.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(root.Path(), ".uawp", "CONTEXT.md")); err != nil {
+		t.Fatal(err)
+	}
+	before := snapshotTree(t, root.Path())
+	report := Doctor(root)
+	if len(report.Findings) < 2 || !doctorHasCode(report, CodeRepairAvailable) || !doctorHasCode(report, CodeManualRepairRequired) {
+		t.Fatalf("Doctor() = %#v", report)
+	}
+	if !reflect.DeepEqual(before, snapshotTree(t, root.Path())) {
+		t.Fatal("Doctor mutated workspace")
+	}
+}
+
+func TestDoctorMaintenanceReportsUpgradeAndActiveBlock(t *testing.T) {
+	root := oldVersionWorkspace(t)
+	writeOwnership(t, root, "ACTIVE", "none")
+	report := Doctor(root)
+	if !doctorHasCode(report, CodeUpgradeAvailable) || !doctorHasCode(report, CodeMaintenanceBlockedActive) {
+		t.Fatalf("Doctor() = %#v", report)
+	}
+}
+
+func doctorHasCode(report DoctorReport, code FindingCode) bool {
+	for _, finding := range report.Findings {
+		if finding.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
 func initializeFixture(t *testing.T, root Root) {
 	t.Helper()
 	value, err := PlanInit(root)

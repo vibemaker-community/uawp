@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/uawp/uawp/internal/core"
@@ -12,16 +13,20 @@ import (
 type FindingCode string
 
 const (
-	CodeReady              FindingCode = "READY"
-	CodeUninitialized      FindingCode = "UNINITIALIZED"
-	CodeActiveOwner        FindingCode = "ACTIVE_OWNER"
-	CodeUnknownNamespace   FindingCode = "UNKNOWN_NAMESPACE"
-	CodeInvalidManifest    FindingCode = "INVALID_MANIFEST"
-	CodeUnsupportedVersion FindingCode = "UNSUPPORTED_VERSION"
-	CodeInvalidOwnership   FindingCode = "INVALID_OWNERSHIP"
-	CodeIncompleteState    FindingCode = "INCOMPLETE_STATE"
-	CodeRecoveryRequired   FindingCode = "RECOVERY_REQUIRED"
-	CodeUpgradeRequired    FindingCode = "UPGRADE_REQUIRED"
+	CodeReady                    FindingCode = "READY"
+	CodeUninitialized            FindingCode = "UNINITIALIZED"
+	CodeActiveOwner              FindingCode = "ACTIVE_OWNER"
+	CodeUnknownNamespace         FindingCode = "UNKNOWN_NAMESPACE"
+	CodeInvalidManifest          FindingCode = "INVALID_MANIFEST"
+	CodeUnsupportedVersion       FindingCode = "UNSUPPORTED_VERSION"
+	CodeInvalidOwnership         FindingCode = "INVALID_OWNERSHIP"
+	CodeIncompleteState          FindingCode = "INCOMPLETE_STATE"
+	CodeRecoveryRequired         FindingCode = "RECOVERY_REQUIRED"
+	CodeUpgradeRequired          FindingCode = "UPGRADE_REQUIRED"
+	CodeUpgradeAvailable         FindingCode = "UPGRADE_AVAILABLE"
+	CodeMaintenanceBlockedActive FindingCode = "MAINTENANCE_BLOCKED_ACTIVE"
+	CodeRepairAvailable          FindingCode = "REPAIR_AVAILABLE"
+	CodeManualRepairRequired     FindingCode = "MANUAL_REPAIR_REQUIRED"
 )
 
 type StatusReport struct {
@@ -32,14 +37,50 @@ type StatusReport struct {
 	NextAction string      `json:"nextAction"`
 }
 
-type DoctorReport = StatusReport
+type DoctorReport struct {
+	StatusReport
+	Findings []StatusReport `json:"findings"`
+}
 
 func Status(root Root) StatusReport {
 	return diagnose(root)
 }
 
 func Doctor(root Root) DoctorReport {
-	return diagnose(root)
+	primary := diagnose(root)
+	findings := []StatusReport{primary}
+	inventory, err := Discover(root)
+	if err == nil && inventory.Namespace == NamespaceOwned && inventory.Manifest != nil {
+		if inventory.StateCompatibility == core.StateUpgradeRequired {
+			findings = append(findings, finding(CodeUpgradeAvailable, "warning", fmt.Sprintf("State version %s can be upgraded to %s.", inventory.Manifest.StateVersion, core.CurrentStateVersion), "Preview uawp upgrade."))
+		}
+		ownership, ownershipErr := readOwnership(filepath.Join(root.Path(), ".uawp", "ACTIVE_WORKER.md"))
+		if ownershipErr == nil && ownership.Status == core.Active {
+			findings = append(findings, finding(CodeMaintenanceBlockedActive, "warning", fmt.Sprintf("Worker %s currently owns the workspace.", ownership.WorkerID), "Release ownership before maintenance."))
+		}
+		for _, item := range []struct {
+			name      string
+			generated bool
+		}{{"INSTRUCTIONS.md", true}, {"CONTEXT.md", false}, {"DECISIONS.md", false}} {
+			path := filepath.Join(root.Path(), ".uawp", item.name)
+			if info, statErr := os.Lstat(path); os.IsNotExist(statErr) {
+				code, next := CodeManualRepairRequired, "Restore this user-authored state from a checkpoint or backup."
+				if item.generated {
+					code, next = CodeRepairAvailable, "Preview uawp repair to regenerate the exact versioned template."
+				}
+				findings = append(findings, finding(code, "error", fmt.Sprintf("Required state file %s is missing.", item.name), next))
+			} else if statErr != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+				findings = append(findings, finding(CodeManualRepairRequired, "error", fmt.Sprintf("Required state file %s is unsafe.", item.name), "Resolve the filesystem object manually."))
+			}
+		}
+	}
+	sort.SliceStable(findings, func(i, j int) bool {
+		if findings[i].Severity != findings[j].Severity {
+			return findings[i].Severity < findings[j].Severity
+		}
+		return findings[i].Code < findings[j].Code
+	})
+	return DoctorReport{StatusReport: primary, Findings: findings}
 }
 
 func diagnose(root Root) StatusReport {

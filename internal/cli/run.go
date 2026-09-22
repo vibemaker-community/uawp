@@ -127,7 +127,8 @@ func runDiagnostic(command string, args []string, stdout, stderr io.Writer) int 
 	}
 	report := workspace.Status(root)
 	if command == "doctor" {
-		report = workspace.Doctor(root)
+		doctor := workspace.Doctor(root)
+		report = doctor.StatusReport
 	}
 	result := commandOutput{SchemaVersion: "1", Command: command, Workspace: root.Path(), Findings: []workspace.StatusReport{report}, NextAction: report.NextAction}
 	if report.Code == workspace.CodeReady || report.Code == workspace.CodeActiveOwner {
