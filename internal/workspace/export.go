@@ -37,9 +37,13 @@ type ExportManifest struct {
 
 func SnapshotNamespace(root Root) (NamespaceSnapshot, error) {
 	base := filepath.Join(root.Path(), ".uawp")
+	return snapshotDirectory(base)
+}
+
+func snapshotDirectory(base string) (NamespaceSnapshot, error) {
 	info, err := os.Lstat(base)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return NamespaceSnapshot{}, fmt.Errorf("unsafe UAWP namespace")
+		return NamespaceSnapshot{}, fmt.Errorf("unsafe UAWP state directory")
 	}
 	snapshot := NamespaceSnapshot{content: map[string][]byte{}}
 	err = filepath.WalkDir(base, func(path string, entry os.DirEntry, walkErr error) error {

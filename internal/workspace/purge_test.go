@@ -117,3 +117,44 @@ func TestPrecommitPurgeInterruptionIsDiscoverableAndRollbackable(t *testing.T) {
 		t.Fatalf("status=%#v", Status(root))
 	}
 }
+
+func TestPendingPurgeBlocksOrdinaryMutation(t *testing.T) {
+	root := adapterRoot(t)
+	destination := filepath.Join(t.TempDir(), "state.tar.gz")
+	purge, _, _ := PlanPurgeAt(root, adapter.RuntimeFacts{}, destination, time.Now())
+	_, _ = ApplyPurge(root, purge, PurgeOptions{ApplyOptions: ApplyOptions{ApprovedPlanID: purge.ID}, Failpoint: func(stage string) error {
+		if stage == "after-marker" {
+			return errors.New("crash")
+		}
+		return nil
+	}})
+	repair, _, err := PlanRepairAt(root, adapter.RuntimeFacts{}, nil, time.Now())
+	if err == nil {
+		if _, err := Apply(root, repair, ApplyOptions{ApprovedPlanID: repair.ID}); err == nil {
+			t.Fatal("ordinary mutation accepted pending purge")
+		}
+	}
+}
+
+func TestPurgeCleanupRejectsTombstoneDrift(t *testing.T) {
+	root := adapterRoot(t)
+	destination := filepath.Join(t.TempDir(), "state.tar.gz")
+	p, _, _ := PlanPurgeAt(root, adapter.RuntimeFacts{}, destination, time.Now())
+	_, _ = ApplyPurge(root, p, PurgeOptions{ApplyOptions: ApplyOptions{ApprovedPlanID: p.ID}, Failpoint: func(stage string) error {
+		if stage == "after-rename" {
+			return errors.New("crash")
+		}
+		return nil
+	}})
+	cleanup, err := PlanPurgeCleanupAt(root, "human-1", "verified", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tombstone, _ := findPurgeTombstone(root)
+	if err := os.WriteFile(filepath.Join(tombstone, "late.txt"), []byte("not exported"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyPurgeCleanup(root, cleanup, cleanup.ID); err == nil {
+		t.Fatal("cleanup accepted tombstone drift")
+	}
+}

@@ -13,7 +13,6 @@ import (
 )
 
 func PlanRepairAt(root Root, facts adapter.RuntimeFacts, selected []string, at time.Time) (plan.Plan, []StatusReport, error) {
-	_ = facts
 	_ = at
 	inventory, err := Discover(root)
 	if err != nil {
@@ -55,6 +54,23 @@ func PlanRepairAt(root Root, facts adapter.RuntimeFacts, selected []string, at t
 		return plan.Plan{}, findings, err
 	}
 	inputs := []plan.Input{{Path: ".uawp/manifest.json", SHA256: plan.HashBytes(manifestBytes)}, {Path: ".uawp/ACTIVE_WORKER.md", SHA256: plan.HashBytes(ownershipBytes)}}
+	ids, err := ConfiguredAdapterIDs(root)
+	if err != nil {
+		return plan.Plan{}, findings, err
+	}
+	resolutions, err := ResolveAdapters(root, ids, facts)
+	if err != nil {
+		return plan.Plan{}, findings, err
+	}
+	routes := map[string]adapter.Route{}
+	for _, resolution := range resolutions {
+		routes[resolution.Provider] = resolution.Route
+		_, bound, snapErr := adapterSnapshot(root, resolution.Provider, facts)
+		if snapErr != nil {
+			return plan.Plan{}, findings, snapErr
+		}
+		inputs = append(inputs, bound...)
+	}
 	instructions := filepath.Join(root.Path(), ".uawp", "INSTRUCTIONS.md")
 	if _, statErr := os.Lstat(instructions); os.IsNotExist(statErr) {
 		inputs = append(inputs, plan.Input{Path: ".uawp/INSTRUCTIONS.md", SHA256: plan.MissingSHA256})
@@ -68,17 +84,37 @@ func PlanRepairAt(root Root, facts adapter.RuntimeFacts, selected []string, at t
 		if !allowNative {
 			continue
 		}
-		if !artifact.CreatedFile || artifact.Mode == core.Direct {
+		if artifact.Mode == core.Direct {
+			continue
+		}
+		routeMatches := true
+		for _, consumer := range artifact.Consumers {
+			route := routes[consumer]
+			if route.Path != artifact.Path || route.Mode != artifact.Mode || route.Target != artifact.Target {
+				routeMatches = false
+			}
+		}
+		if !routeMatches {
 			continue
 		}
 		path := filepath.Join(root.Path(), filepath.FromSlash(artifact.Path))
-		if _, statErr := os.Lstat(path); !os.IsNotExist(statErr) {
+		before, readErr := os.ReadFile(path)
+		missing := os.IsNotExist(readErr)
+		if missing && !artifact.CreatedFile {
+			continue
+		}
+		if readErr != nil && !missing {
 			continue
 		}
 		var content []byte
+		content = append([]byte(nil), before...)
 		switch artifact.Mode {
 		case core.ManagedBlock:
-			content, _, err = adapter.UpsertManagedBlock(nil, adapter.BlockSpec{ArtifactID: artifact.ID, Target: artifact.Target, Consumers: artifact.Consumers, Body: adapter.BridgeBody()})
+			var meta adapter.BlockMeta
+			content, meta, err = adapter.UpsertManagedBlock(content, adapter.BlockSpec{ArtifactID: artifact.ID, Target: artifact.Target, Consumers: artifact.Consumers, Body: adapter.BridgeBody()})
+			if err == nil && meta.OutsideSHA256 != artifact.OutsideContentSHA256 {
+				err = fmt.Errorf("outside content drift")
+			}
 		case core.Import:
 			for _, target := range ownedImportTargets(artifact) {
 				content, _, err = adapter.UpsertImport(content, target)
@@ -87,11 +123,20 @@ func PlanRepairAt(root Root, facts adapter.RuntimeFacts, selected []string, at t
 				}
 			}
 		}
-		if err != nil || plan.HashBytes(content) != artifact.ArtifactSHA256 {
+		exact := artifact.Mode == core.ManagedBlock || plan.HashBytes(content) == artifact.ArtifactSHA256
+		if err != nil || !exact || string(content) == string(before) {
 			continue
 		}
-		inputs = append(inputs, plan.Input{Path: artifact.Path, SHA256: plan.MissingSHA256})
-		changes = append(changes, plan.NewFile(artifact.Path, 0o600, plan.MissingSHA256, content))
+		beforeHash := plan.MissingSHA256
+		if !missing {
+			beforeHash = plan.HashBytes(before)
+		}
+		inputs = append(inputs, plan.Input{Path: artifact.Path, SHA256: beforeHash})
+		if missing {
+			changes = append(changes, plan.NewFile(artifact.Path, 0o600, beforeHash, content))
+		} else {
+			changes = append(changes, plan.NewUpdateFile(artifact.Path, 0o600, beforeHash, content))
+		}
 	}
-	return plan.NewForWorkspaceInputs("repair", root.Path(), changes, inputs), findings, nil
+	return plan.NewForWorkspaceInputs("repair", root.Path(), changes, uniqueUpgradeInputs(inputs)), findings, nil
 }

@@ -43,7 +43,7 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 		return ApplyReport{}, fmt.Errorf("plan workspace %q does not match %q", value.Workspace, root.Path())
 	}
 	changes := value.Changes()
-	unlock, err := acquireTransactionLock(root)
+	unlock, err := acquireTransactionLock(root, value.Operation == "purge-abort")
 	if err != nil {
 		return ApplyReport{}, err
 	}
@@ -133,7 +133,7 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 	return report, nil
 }
 
-func acquireTransactionLock(root Root) (func(), error) {
+func acquireTransactionLock(root Root, allowPendingPurge bool) (func(), error) {
 	namespace := filepath.Join(root.Path(), ".uawp")
 	if info, err := os.Lstat(namespace); os.IsNotExist(err) {
 		return nil, nil
@@ -153,6 +153,15 @@ func acquireTransactionLock(root Root) (func(), error) {
 	} else if !os.IsNotExist(err) {
 		os.Remove(lockPath)
 		return nil, err
+	}
+	if !allowPendingPurge {
+		if _, err := os.Lstat(filepath.Join(namespace, "PURGE.json")); err == nil {
+			os.Remove(lockPath)
+			return nil, fmt.Errorf("workspace purge recovery is required before mutation")
+		} else if !os.IsNotExist(err) {
+			os.Remove(lockPath)
+			return nil, err
+		}
 	}
 	return func() { _ = os.Remove(lockPath) }, nil
 }

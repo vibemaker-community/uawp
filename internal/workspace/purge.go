@@ -74,7 +74,7 @@ func ApplyPurge(root Root, value plan.Plan, options PurgeOptions) (PurgeReport, 
 	if err := VerifyUninstallDetached(root); err != nil {
 		return report, err
 	}
-	unlock, err := acquireTransactionLock(root)
+	unlock, err := acquireTransactionLock(root, false)
 	if err != nil {
 		return report, err
 	}
@@ -170,6 +170,10 @@ func PlanPurgeCleanupAt(root Root, controllerID, reason string, at time.Time) (p
 	if exported.ArchiveSHA256 != marker.ArchiveSHA256 {
 		return plan.Plan{}, fmt.Errorf("verify purge export: archive hash changed")
 	}
+	tombstoneSnapshot, err := snapshotDirectory(tombstone)
+	if err != nil || tombstoneSnapshot.fingerprint != marker.NamespaceSHA256 {
+		return plan.Plan{}, fmt.Errorf("purge tombstone differs from exported namespace")
+	}
 	markerRaw, _ := os.ReadFile(filepath.Join(tombstone, "PURGE.json"))
 	metadata := plan.Metadata{ControllerID: controllerID, Reason: reason, TransactionID: filepath.Base(tombstone), RecoveryAction: "CONTINUE", PurgeExportPath: marker.ExportPath, PurgeArchiveSHA256: marker.ArchiveSHA256, PurgeMarkerSHA256: plan.HashBytes(markerRaw)}
 	return plan.NewForWorkspaceInputsMetadata("purge-cleanup", root.Path(), nil, nil, metadata), nil
@@ -185,7 +189,11 @@ func HasPurgeTombstone(root Root) bool {
 		return false
 	}
 	exported, err := VerifyExportFile(marker.ExportPath)
-	return err == nil && exported.ArchiveSHA256 == marker.ArchiveSHA256
+	if err != nil || exported.ArchiveSHA256 != marker.ArchiveSHA256 {
+		return false
+	}
+	snapshot, err := snapshotDirectory(value)
+	return err == nil && snapshot.fingerprint == marker.NamespaceSHA256
 }
 
 func ApplyPurgeCleanup(root Root, value plan.Plan, approved string) error {
@@ -210,6 +218,10 @@ func ApplyPurgeCleanup(root Root, value plan.Plan, approved string) error {
 	}
 	if exported.ArchiveSHA256 != value.Metadata().PurgeArchiveSHA256 || marker.ArchiveSHA256 != exported.ArchiveSHA256 {
 		return fmt.Errorf("purge export evidence changed")
+	}
+	snapshot, err := snapshotDirectory(tombstone)
+	if err != nil || snapshot.fingerprint != marker.NamespaceSHA256 {
+		return fmt.Errorf("purge tombstone differs from exported namespace")
 	}
 	if err := os.RemoveAll(tombstone); err != nil {
 		return err

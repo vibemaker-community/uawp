@@ -61,3 +61,27 @@ func hasStatusCode(findings []StatusReport, code FindingCode) bool {
 	}
 	return false
 }
+
+func TestRepairRestoresProvablyOwnedBlockInExistingFile(t *testing.T) {
+	root := adapterRoot(t)
+	mustWrite(t, filepath.Join(root.Path(), "AGENTS.md"), "# project rules\n")
+	addAdapter(t, root, "codex")
+	manifest, _, _ := readAdapterManifest(root)
+	artifact := manifest.Integrations[0]
+	path := filepath.Join(root.Path(), "AGENTS.md")
+	content, _ := os.ReadFile(path)
+	outside, err := adapter.RemoveManagedBlock(content, adapter.BlockSpec{ArtifactID: artifact.ID, Target: artifact.Target, Consumers: artifact.Consumers, Body: adapter.BridgeBody()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, outside, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p, _, err := PlanRepairAt(root, adapter.RuntimeFacts{}, []string{"native"}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Changes()) != 1 || p.Changes()[0].Path != "AGENTS.md" {
+		t.Fatalf("changes=%#v", p.Changes())
+	}
+}
