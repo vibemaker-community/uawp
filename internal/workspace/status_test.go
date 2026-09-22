@@ -33,6 +33,10 @@ func TestStatusReportMatrix(t *testing.T) {
 			mustMkdir(t, filepath.Join(root.Path(), ".uawp"))
 			mustWrite(t, filepath.Join(root.Path(), ".uawp", "manifest.json"), `{"protocol":"UAWP","stateVersion":"2.0.0"}`)
 		}, CodeUnsupportedVersion},
+		{"unsupported minor version", func(t *testing.T, root Root) {
+			mustMkdir(t, filepath.Join(root.Path(), ".uawp"))
+			mustWrite(t, filepath.Join(root.Path(), ".uawp", "manifest.json"), `{"protocol":"UAWP","stateVersion":"1.99.0"}`)
+		}, CodeUnsupportedVersion},
 		{"missing state", func(t *testing.T, root Root) {
 			initializeFixture(t, root)
 			if err := os.Remove(filepath.Join(root.Path(), ".uawp", "CONTEXT.md")); err != nil {

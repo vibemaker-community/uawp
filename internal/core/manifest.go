@@ -12,7 +12,7 @@ import (
 
 const ProtocolName = "UAWP"
 
-var stateVersionPattern = regexp.MustCompile(`^1\.[0-9]+\.[0-9]+$`)
+var stateVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 var integrationIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 var sha256Pattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
@@ -125,7 +125,7 @@ func ValidateManifest(manifest Manifest) error {
 		return newDomainError(ErrUnknownNamespace, "protocol must be %q, got %q", ProtocolName, manifest.Protocol)
 	}
 	if !stateVersionPattern.MatchString(manifest.StateVersion) {
-		return newDomainError(ErrUnsupportedVersion, "unsupported state version %q", manifest.StateVersion)
+		return newDomainError(ErrInvalidState, "malformed state version %q", manifest.StateVersion)
 	}
 	seenIDs, seenPaths, seenConsumers := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for i := range manifest.Integrations {

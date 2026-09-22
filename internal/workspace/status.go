@@ -66,6 +66,9 @@ func diagnose(root Root) StatusReport {
 	default:
 		return finding(CodeInvalidManifest, "error", fmt.Sprintf("Unknown namespace classification %q.", inventory.Namespace), "Stop and inspect the workspace.")
 	}
+	if inventory.StateCompatibility == core.StateUnsupported || inventory.StateCompatibility == core.StateFutureMajor {
+		return finding(CodeUnsupportedVersion, "error", fmt.Sprintf("State version %s is not supported by this UAWP release.", inventory.Manifest.StateVersion), "Use a UAWP version with an explicit compatibility path for this state version.")
+	}
 
 	if _, err := os.Lstat(recoveryPath); err == nil {
 		return finding(CodeRecoveryRequired, "error", "A UAWP recovery journal is present.", "Run recovery diagnostics before any mutation.")

@@ -15,7 +15,8 @@ func TestDecodeManifest(t *testing.T) {
 	}{
 		{"valid", `{"protocol":"UAWP","stateVersion":"1.0.0"}`, false},
 		{"wrong owner", `{"protocol":"other","stateVersion":"1.0.0"}`, true},
-		{"future major", `{"protocol":"UAWP","stateVersion":"2.0.0"}`, true},
+		{"future major is structurally valid", `{"protocol":"UAWP","stateVersion":"2.0.0"}`, false},
+		{"malformed version", `{"protocol":"UAWP","stateVersion":"v1"}`, true},
 		{"duplicate protocol", `{"protocol":"UAWP","protocol":"other","stateVersion":"1.0.0"}`, true},
 		{"unknown field", `{"protocol":"UAWP","stateVersion":"1.0.0","x":1}`, true},
 		{"trailing value", `{"protocol":"UAWP","stateVersion":"1.0.0"} {}`, true},
@@ -32,6 +33,23 @@ func TestDecodeManifest(t *testing.T) {
 				t.Fatalf("DecodeManifest() error = %v", err)
 			}
 		})
+	}
+}
+
+func TestManifestCompatibilityIsSeparateFromStructure(t *testing.T) {
+	for version, want := range map[string]StateCompatibility{
+		"1.0.0":  StateUpgradeRequired,
+		"1.1.0":  StateCurrent,
+		"1.99.0": StateUnsupported,
+		"2.0.0":  StateFutureMajor,
+	} {
+		manifest, err := DecodeManifest(strings.NewReader(`{"protocol":"UAWP","stateVersion":"` + version + `"}`))
+		if err != nil {
+			t.Fatalf("DecodeManifest(%s): %v", version, err)
+		}
+		if got := ClassifyStateVersion(manifest.StateVersion); got != want {
+			t.Fatalf("compatibility(%s) = %s, want %s", version, got, want)
+		}
 	}
 }
 

@@ -25,6 +25,7 @@ type Inventory struct {
 	Namespace          NamespaceKind
 	Manifest           *core.Manifest
 	ManifestError      string
+	StateCompatibility core.StateCompatibility
 	RootContextPresent bool
 	NativeFiles        []string
 }
@@ -117,6 +118,7 @@ func Discover(root Root) (Inventory, error) {
 	}
 	inventory.Namespace = NamespaceOwned
 	inventory.Manifest = &manifest
+	inventory.StateCompatibility = core.ClassifyStateVersion(manifest.StateVersion)
 	return inventory, nil
 }
 

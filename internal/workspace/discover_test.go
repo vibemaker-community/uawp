@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/uawp/uawp/internal/core"
 )
 
 func TestDiscoverClassifiesNamespace(t *testing.T) {
@@ -42,6 +44,32 @@ func TestDiscoverClassifiesNamespace(t *testing.T) {
 			}
 			if got.Namespace != tt.want {
 				t.Fatalf("Namespace = %q, want %q", got.Namespace, tt.want)
+			}
+		})
+	}
+}
+
+func TestDiscoverVersionCompatibility(t *testing.T) {
+	for version, want := range map[string]core.StateCompatibility{
+		"1.0.0":  core.StateUpgradeRequired,
+		"1.1.0":  core.StateCurrent,
+		"1.99.0": core.StateUnsupported,
+		"2.0.0":  core.StateFutureMajor,
+	} {
+		t.Run(version, func(t *testing.T) {
+			dir := t.TempDir()
+			mustMkdir(t, filepath.Join(dir, ".uawp"))
+			mustWrite(t, filepath.Join(dir, ".uawp", "manifest.json"), `{"protocol":"UAWP","stateVersion":"`+version+`"}`)
+			root, err := OpenRoot(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			inventory, err := Discover(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if inventory.Namespace != NamespaceOwned || inventory.StateCompatibility != want {
+				t.Fatalf("Discover(%s) = namespace %s compatibility %s, want OWNED %s", version, inventory.Namespace, inventory.StateCompatibility, want)
 			}
 		})
 	}
