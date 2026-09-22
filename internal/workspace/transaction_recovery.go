@@ -104,6 +104,16 @@ func ApplyTransactionRecovery(root Root, value plan.Plan, options ApplyOptions) 
 	if clock == nil {
 		clock = time.Now
 	}
+	if snapshot.bundle.Plan.Metadata.MigrationReceiptPath != "" && metadata.RecoveryAction == "CONTINUE" {
+		original, restoreErr := plan.Restore(snapshot.bundle.Plan)
+		if restoreErr != nil {
+			return ApplyReport{}, restoreErr
+		}
+		finalizer := durableTransaction{root: root, journal: snapshot.bundle.Journal, metadata: snapshot.bundle.Plan.Metadata}
+		if receiptErr := finalizer.writeMigrationReceipt(original.Changes(), clock()); receiptErr != nil {
+			return ApplyReport{}, receiptErr
+		}
+	}
 	result := transaction.ResultCompleted
 	if metadata.RecoveryAction == "ROLLBACK" {
 		result = transaction.ResultRolledBack

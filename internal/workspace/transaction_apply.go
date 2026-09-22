@@ -224,12 +224,14 @@ func (d *durableTransaction) complete(changes []plan.Change, options ApplyOption
 
 func (d *durableTransaction) writeMigrationReceipt(changes []plan.Change, completedAt time.Time) error {
 	hashes := map[string]string{}
+	paths := make([]string, 0, len(changes))
 	for _, change := range changes {
+		paths = append(paths, change.Path)
 		if change.AfterSHA256 != plan.MissingSHA256 && change.AfterSHA256 != plan.DirectorySHA256 {
 			hashes[change.Path] = change.AfterSHA256
 		}
 	}
-	content, err := encodeMigrationReceipt(migrationReceipt{SchemaVersion: "1", From: d.metadata.MigrationFrom, To: d.metadata.MigrationTo, ApprovedPlanID: d.journal.PlanID, CompletedAt: completedAt.Format(time.RFC3339), ResultingHashes: hashes})
+	content, err := encodeMigrationReceipt(migrationReceipt{SchemaVersion: "1", From: d.metadata.MigrationFrom, To: d.metadata.MigrationTo, ApprovedPlanID: d.journal.PlanID, CompletedAt: completedAt.Format(time.RFC3339), ResultingHashes: hashes, CLIVersion: "dev", AppliedPaths: paths})
 	if err != nil {
 		return err
 	}

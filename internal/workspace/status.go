@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/uawp/uawp/internal/adapter"
 	"github.com/uawp/uawp/internal/core"
 )
 
@@ -73,6 +74,15 @@ func Doctor(root Root) DoctorReport {
 				findings = append(findings, finding(CodeManualRepairRequired, "error", fmt.Sprintf("Required state file %s is unsafe.", item.name), "Resolve the filesystem object manually."))
 			}
 		}
+		if ids, idsErr := ConfiguredAdapterIDs(root); idsErr == nil && len(ids) > 0 {
+			if resolutions, resolveErr := ResolveAdapters(root, ids, adapter.RuntimeFacts{}); resolveErr == nil {
+				for _, resolution := range resolutions {
+					if resolution.Confidence == adapter.Unsupported || resolution.Health != "HEALTHY" {
+						findings = append(findings, finding(CodeManualRepairRequired, "error", fmt.Sprintf("Adapter %s requires reviewed repair: %s.", resolution.Provider, resolution.Health), "Resolve native-entry drift or use an explicitly reviewed repair plan."))
+					}
+				}
+			}
+		}
 	}
 	sort.SliceStable(findings, func(i, j int) bool {
 		if findings[i].Severity != findings[j].Severity {
@@ -84,6 +94,11 @@ func Doctor(root Root) DoctorReport {
 }
 
 func diagnose(root Root) StatusReport {
+	if tombstone, err := findPurgeTombstone(root); err != nil {
+		return finding(CodeRecoveryRequired, "error", err.Error(), "Resolve the purge tombstone manually before further mutation.")
+	} else if tombstone != "" {
+		return finding(CodeRecoveryRequired, "error", fmt.Sprintf("A committed purge tombstone is present at %s.", filepath.Base(tombstone)), "Verify the external export, then continue tombstone cleanup.")
+	}
 	// A journal is meaningful even when a crash occurred before manifest.json,
 	// which is intentionally published last.
 	recoveryPath := filepath.Join(root.Path(), ".uawp", "RECOVERY.json")
@@ -145,6 +160,33 @@ func diagnose(root Root) StatusReport {
 		return finding(CodeActiveOwner, "warning", fmt.Sprintf("Worker %s is ACTIVE via %s.", ownership.WorkerID, ownership.Agent), "Remain read-only unless this worker owns the claim.")
 	}
 	return finding(CodeReady, "info", fmt.Sprintf("Namespace is valid and ownership is %s.", ownership.Status), "Resume workspace context before acquiring ownership.")
+}
+
+func findPurgeTombstone(root Root) (string, error) {
+	matches, err := filepath.Glob(filepath.Join(root.Path(), ".uawp-purge-*"))
+	if err != nil {
+		return "", err
+	}
+	if len(matches) == 0 {
+		return "", nil
+	}
+	if len(matches) != 1 {
+		return "", fmt.Errorf("multiple purge tombstones require manual recovery")
+	}
+	info, err := os.Lstat(matches[0])
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("unsafe purge tombstone")
+	}
+	file, err := os.Open(filepath.Join(matches[0], "manifest.json"))
+	if err != nil {
+		return "", fmt.Errorf("unrecognized purge tombstone")
+	}
+	manifest, decodeErr := core.DecodeManifest(file)
+	file.Close()
+	if decodeErr != nil || manifest.Protocol != core.ProtocolName {
+		return "", fmt.Errorf("unrecognized purge tombstone")
+	}
+	return matches[0], nil
 }
 
 func finding(code FindingCode, severity, observed, next string) StatusReport {

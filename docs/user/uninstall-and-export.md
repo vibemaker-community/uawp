@@ -12,9 +12,9 @@ Only exact UAWP imports and managed blocks are removed. A native file is deleted
 Purge is a separate destructive operation and requires a new external archive path:
 
 ```bash
-uawp uninstall --purge --export /absolute/backups/project-uawp.tar.gz \
+uawp uninstall --purge-state --export /absolute/backups/project-uawp.tar.gz \
   --workspace /absolute/project --format json
-uawp uninstall --purge --export /absolute/backups/project-uawp.tar.gz \
+uawp uninstall --purge-state --export /absolute/backups/project-uawp.tar.gz \
   --workspace /absolute/project --approve PLAN_ID --format json
 ```
 

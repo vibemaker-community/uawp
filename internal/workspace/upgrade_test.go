@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -139,5 +140,45 @@ func TestUpgradeReceiptCollisionStopsPlanning(t *testing.T) {
 	}
 	if _, _, err := PlanUpgradeAt(root, adapter.RuntimeFacts{}, at); err == nil {
 		t.Fatal("upgrade accepted receipt collision")
+	}
+}
+
+func TestUpgradeApprovalBindsReleasedOwnership(t *testing.T) {
+	root := oldVersionWorkspace(t)
+	p, _, err := PlanUpgradeAt(root, adapter.RuntimeFacts{}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeOwnership(t, root, "ACTIVE", "none")
+	if _, err := Apply(root, p, ApplyOptions{ApprovedPlanID: p.ID}); err == nil {
+		t.Fatal("upgrade ignored ownership drift")
+	}
+}
+
+func TestUpgradeContinuationFinalizesMigrationReceipt(t *testing.T) {
+	root := oldVersionWorkspace(t)
+	p, _, err := PlanUpgradeAt(root, adapter.RuntimeFacts{}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := len(p.Changes()) - 1
+	_, err = Apply(root, p, ApplyOptions{ApprovedPlanID: p.ID, Failpoint: func(stage string, index int) error {
+		if stage == "after-action-verify" && index == last {
+			return errors.New("crash")
+		}
+		return nil
+	}})
+	if err == nil {
+		t.Fatal("expected interruption")
+	}
+	continuation, err := PlanTransactionContinueAt(root, "human-1", "verified continuation", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ApplyTransactionRecovery(root, continuation, ApplyOptions{ApprovedPlanID: continuation.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if matches, _ := filepath.Glob(filepath.Join(root.Path(), ".uawp", "migrations", "*.json")); len(matches) != 1 {
+		t.Fatalf("migration receipts=%#v", matches)
 	}
 }

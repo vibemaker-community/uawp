@@ -28,7 +28,8 @@ func parseMaintenance(command string, args []string, stderr io.Writer) (maintena
 	set.StringVar(&f.controller, "controller-id", "", "Human Controller ID")
 	set.StringVar(&f.reason, "reason", "", "auditable reason")
 	set.StringVar(&f.export, "export", "", "external .tar.gz export path")
-	set.BoolVar(&f.purge, "purge", false, "purge state after verified export")
+	set.BoolVar(&f.purge, "purge-state", false, "purge state after verified export")
+	set.BoolVar(&f.purge, "purge", false, "deprecated alias for --purge-state")
 	set.Var(&selected, "select", "repair item")
 	if set.Parse(args) != nil || set.NArg() != 0 || f.workspace == "" || (f.format != "text" && f.format != "json") {
 		return f, false
@@ -106,6 +107,11 @@ func runTransaction(args []string, stdout, stderr io.Writer) int {
 		}
 		report, statusErr := workspace.TransactionStatus(root)
 		if statusErr != nil {
+			if workspace.HasPurgeTombstone(root) {
+				result := commandOutput{SchemaVersion: "1", Command: "transaction status", Workspace: root.Path(), Classification: "TRANSACTION_COMPLETE", NextAction: "Continue verified purge tombstone cleanup."}
+				writeOutput(stdout, f.format, result)
+				return exitOK
+			}
 			fmt.Fprintln(stderr, statusErr)
 			return exitInvalidState
 		}
@@ -130,6 +136,9 @@ func runTransaction(args []string, stdout, stderr io.Writer) int {
 		value, err = workspace.PlanTransactionRollbackAt(root, f.controller, f.reason, generatedAt)
 	} else {
 		value, err = workspace.PlanTransactionContinueAt(root, f.controller, f.reason, generatedAt)
+		if err != nil && workspace.HasPurgeTombstone(root) {
+			value, err = workspace.PlanPurgeCleanupAt(root, f.controller, f.reason, generatedAt)
+		}
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -197,12 +206,19 @@ func previewOrApplyTransaction(action string, root workspace.Root, f maintenance
 	if approvedHash != value.ID || f.approval != token {
 		return exitApprovalRequired
 	}
-	applied, err := workspace.ApplyTransactionRecovery(root, value, workspace.ApplyOptions{ApprovedPlanID: value.ID})
+	var applied workspace.ApplyReport
+	var err error
+	if value.Operation == "purge-cleanup" {
+		err = workspace.ApplyPurgeCleanup(root, value, value.ID)
+		applied.Verified = err == nil
+	} else {
+		applied, err = workspace.ApplyTransactionRecovery(root, value, workspace.ApplyOptions{ApprovedPlanID: value.ID})
+	}
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return exitInvalidState
 	}
-	result.Mutated = len(applied.Applied) > 0
+	result.Mutated = len(applied.Applied) > 0 || value.Operation == "purge-cleanup"
 	result.NextAction = "Transaction recovery applied and verified."
 	writeOutput(stdout, f.format, result)
 	return exitOK

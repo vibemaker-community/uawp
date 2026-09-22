@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -44,5 +45,39 @@ func TestPurgeRejectsUnsafeDestinationAndActiveOwnership(t *testing.T) {
 	writeOwnership(t, root, "ACTIVE", "none")
 	if _, _, err := PlanPurgeAt(root, adapter.RuntimeFacts{}, filepath.Join(t.TempDir(), "safe.tar.gz"), time.Now()); err == nil {
 		t.Fatal("purge accepted ACTIVE ownership")
+	}
+}
+
+func TestStatusDiscoversCommittedPurgeTombstone(t *testing.T) {
+	root := adapterRoot(t)
+	tombstone := filepath.Join(root.Path(), ".uawp-purge-0123456789abcdef")
+	if err := os.Rename(filepath.Join(root.Path(), ".uawp"), tombstone); err != nil {
+		t.Fatal(err)
+	}
+	if report := Status(root); report.Code != CodeRecoveryRequired {
+		t.Fatalf("status=%#v", report)
+	}
+}
+
+func TestCommittedPurgeTombstoneCanBeVerifiedAndContinued(t *testing.T) {
+	root := adapterRoot(t)
+	destination := filepath.Join(t.TempDir(), "state.tar.gz")
+	p, _, err := PlanPurgeAt(root, adapter.RuntimeFacts{}, destination, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ApplyPurge(root, p, PurgeOptions{ApplyOptions: ApplyOptions{ApprovedPlanID: p.ID}, Failpoint: func(stage string) error { return errors.New("crash") }})
+	if err == nil || !HasPurgeTombstone(root) {
+		t.Fatalf("err=%v tombstone=%v", err, HasPurgeTombstone(root))
+	}
+	cleanup, err := PlanPurgeCleanupAt(root, "human-1", "verified archive", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyPurgeCleanup(root, cleanup, cleanup.ID); err != nil {
+		t.Fatal(err)
+	}
+	if HasPurgeTombstone(root) {
+		t.Fatal("tombstone remains")
 	}
 }

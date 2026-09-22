@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,7 +19,15 @@ type PurgeReport struct {
 	Verified         bool     `json:"verified"`
 	ConsumersRemoved []string `json:"consumersRemoved,omitempty"`
 }
-type PurgeOptions struct{ ApplyOptions ApplyOptions }
+type PurgeOptions struct {
+	ApplyOptions ApplyOptions
+	Failpoint    func(string) error
+}
+type purgeMarker struct {
+	SchemaVersion string `json:"schemaVersion"`
+	PlanID        string `json:"planID"`
+	ExportPath    string `json:"exportPath"`
+}
 
 func PlanPurgeAt(root Root, facts adapter.RuntimeFacts, exportPath string, at time.Time) (plan.Plan, PurgeReport, error) {
 	report := PurgeReport{ExportPath: exportPath}
@@ -62,6 +71,25 @@ func ApplyPurge(root Root, value plan.Plan, options PurgeOptions) (PurgeReport, 
 	if err := VerifyUninstallDetached(root); err != nil {
 		return report, err
 	}
+	unlock, err := acquireTransactionLock(root)
+	if err != nil {
+		return report, err
+	}
+	if unlock != nil {
+		defer unlock()
+	}
+	markerPath := filepath.Join(root.Path(), ".uawp", "PURGE.json")
+	markerBytes, _ := json.MarshalIndent(purgeMarker{SchemaVersion: "1", PlanID: value.ID, ExportPath: report.ExportPath}, "", "  ")
+	markerBytes = append(markerBytes, '\n')
+	if err := writeExclusiveSynced(markerPath, markerBytes, 0o600); err != nil {
+		return report, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = os.Remove(markerPath)
+		}
+	}()
 	snapshot, err := SnapshotNamespace(root)
 	if err != nil {
 		return report, err
@@ -71,6 +99,13 @@ func ApplyPurge(root Root, value plan.Plan, options PurgeOptions) (PurgeReport, 
 		return report, err
 	}
 	report.ArchiveSHA256 = exported.ArchiveSHA256
+	current, err := SnapshotNamespace(root)
+	if err != nil {
+		return report, err
+	}
+	if current.fingerprint != snapshot.fingerprint {
+		return report, fmt.Errorf("namespace changed after verified export; purge stopped")
+	}
 	tombstone := filepath.Join(root.Path(), ".uawp-purge-"+value.ID[:16])
 	if _, err := os.Lstat(tombstone); err == nil || !os.IsNotExist(err) {
 		return report, fmt.Errorf("purge tombstone collision")
@@ -78,10 +113,16 @@ func ApplyPurge(root Root, value plan.Plan, options PurgeOptions) (PurgeReport, 
 	if err := os.Rename(filepath.Join(root.Path(), ".uawp"), tombstone); err != nil {
 		return report, err
 	}
+	committed = true
 	if err := syncDir(root.Path()); err != nil {
 		return report, err
 	}
 	report.TombstonePath = tombstone
+	if options.Failpoint != nil {
+		if err := options.Failpoint("after-rename"); err != nil {
+			return report, fmt.Errorf("purge committed and requires continuation: %w", err)
+		}
+	}
 	if err := os.RemoveAll(tombstone); err != nil {
 		return report, fmt.Errorf("purge committed; tombstone cleanup failed: %w", err)
 	}
@@ -91,4 +132,67 @@ func ApplyPurge(root Root, value plan.Plan, options PurgeOptions) (PurgeReport, 
 	report.Verified = true
 	report.TombstonePath = ""
 	return report, nil
+}
+
+func PlanPurgeCleanupAt(root Root, controllerID, reason string, at time.Time) (plan.Plan, error) {
+	_ = at
+	if controllerID == "" || reason == "" {
+		return plan.Plan{}, fmt.Errorf("controller ID and reason are required")
+	}
+	tombstone, err := findPurgeTombstone(root)
+	if err != nil || tombstone == "" {
+		return plan.Plan{}, fmt.Errorf("purge tombstone is unavailable")
+	}
+	marker, err := readPurgeMarker(filepath.Join(tombstone, "PURGE.json"))
+	if err != nil {
+		return plan.Plan{}, err
+	}
+	if _, err := VerifyExportFile(marker.ExportPath); err != nil {
+		return plan.Plan{}, fmt.Errorf("verify purge export: %w", err)
+	}
+	metadata := plan.Metadata{ControllerID: controllerID, Reason: reason, TransactionID: filepath.Base(tombstone), RecoveryAction: "CONTINUE", PurgeExportPath: marker.ExportPath}
+	return plan.NewForWorkspaceInputsMetadata("purge-cleanup", root.Path(), nil, nil, metadata), nil
+}
+
+func HasPurgeTombstone(root Root) bool {
+	value, err := findPurgeTombstone(root)
+	return err == nil && value != ""
+}
+
+func ApplyPurgeCleanup(root Root, value plan.Plan, approved string) error {
+	if value.Operation != "purge-cleanup" || approved != value.ID {
+		return fmt.Errorf("exact purge cleanup approval is required")
+	}
+	tombstone, err := findPurgeTombstone(root)
+	if err != nil || filepath.Base(tombstone) != value.Metadata().TransactionID {
+		return fmt.Errorf("purge tombstone evidence changed")
+	}
+	marker, err := readPurgeMarker(filepath.Join(tombstone, "PURGE.json"))
+	if err != nil || marker.ExportPath != value.Metadata().PurgeExportPath {
+		return fmt.Errorf("purge marker evidence changed")
+	}
+	if _, err := VerifyExportFile(marker.ExportPath); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(tombstone); err != nil {
+		return err
+	}
+	return syncDir(root.Path())
+}
+
+func readPurgeMarker(path string) (purgeMarker, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return purgeMarker{}, err
+	}
+	var marker purgeMarker
+	decoder := json.NewDecoder(strings.NewReader(string(raw)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&marker); err != nil {
+		return marker, err
+	}
+	if marker.SchemaVersion != "1" || marker.PlanID == "" || marker.ExportPath == "" {
+		return marker, fmt.Errorf("invalid purge marker")
+	}
+	return marker, nil
 }

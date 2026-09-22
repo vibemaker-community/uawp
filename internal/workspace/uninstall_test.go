@@ -91,3 +91,16 @@ func TestUninstallRejectsDriftedManagedBlock(t *testing.T) {
 		t.Fatal("uninstall accepted marker drift")
 	}
 }
+
+func TestUninstallApprovalBindsReleasedOwnership(t *testing.T) {
+	root := adapterRoot(t)
+	addAdapter(t, root, "codex")
+	p, _, err := PlanUninstallDetachAt(root, adapter.RuntimeFacts{}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeOwnership(t, root, "ACTIVE", "none")
+	if _, err := Apply(root, p, ApplyOptions{ApprovedPlanID: p.ID}); err == nil {
+		t.Fatal("uninstall ignored ownership drift")
+	}
+}

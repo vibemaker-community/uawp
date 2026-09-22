@@ -60,5 +60,31 @@ func PlanRepairAt(root Root, facts adapter.RuntimeFacts, selected []string, at t
 	} else if statErr != nil {
 		return plan.Plan{}, findings, statErr
 	}
+	for _, artifact := range inventory.Manifest.Integrations {
+		if !artifact.CreatedFile || artifact.Mode == core.Direct {
+			continue
+		}
+		path := filepath.Join(root.Path(), filepath.FromSlash(artifact.Path))
+		if _, statErr := os.Lstat(path); !os.IsNotExist(statErr) {
+			continue
+		}
+		var content []byte
+		switch artifact.Mode {
+		case core.ManagedBlock:
+			content, _, err = adapter.UpsertManagedBlock(nil, adapter.BlockSpec{ArtifactID: artifact.ID, Target: artifact.Target, Consumers: artifact.Consumers, Body: adapter.BridgeBody()})
+		case core.Import:
+			for _, target := range ownedImportTargets(artifact) {
+				content, _, err = adapter.UpsertImport(content, target)
+				if err != nil {
+					break
+				}
+			}
+		}
+		if err != nil || plan.HashBytes(content) != artifact.ArtifactSHA256 {
+			continue
+		}
+		inputs = append(inputs, plan.Input{Path: artifact.Path, SHA256: plan.MissingSHA256})
+		changes = append(changes, plan.NewFile(artifact.Path, 0o600, plan.MissingSHA256, content))
+	}
 	return plan.NewForWorkspaceInputs("repair", root.Path(), changes, inputs), findings, nil
 }

@@ -69,7 +69,11 @@ func PlanUpgradeAt(root Root, facts adapter.RuntimeFacts, at time.Time) (plan.Pl
 	if err != nil {
 		return plan.Plan{}, report, err
 	}
-	inputs := []plan.Input{{Path: ".uawp/manifest.json", SHA256: plan.HashBytes(manifestBytes)}}
+	ownershipBytes, err := os.ReadFile(filepath.Join(root.Path(), ".uawp", "ACTIVE_WORKER.md"))
+	if err != nil {
+		return plan.Plan{}, report, err
+	}
+	inputs := []plan.Input{{Path: ".uawp/manifest.json", SHA256: plan.HashBytes(manifestBytes)}, {Path: ".uawp/ACTIVE_WORKER.md", SHA256: plan.HashBytes(ownershipBytes)}}
 	for _, relative := range []string{".uawp/migrations", ".uawp/recovery"} {
 		info, statErr := os.Lstat(filepath.Join(root.Path(), filepath.FromSlash(relative)))
 		snapshot := plan.MissingSHA256
@@ -173,6 +177,8 @@ type migrationReceipt struct {
 	ApprovedPlanID  string            `json:"approvedPlanID"`
 	CompletedAt     string            `json:"completedAt"`
 	ResultingHashes map[string]string `json:"resultingHashes"`
+	CLIVersion      string            `json:"cliVersion"`
+	AppliedPaths    []string          `json:"appliedPaths"`
 }
 
 func encodeMigrationReceipt(value migrationReceipt) ([]byte, error) {

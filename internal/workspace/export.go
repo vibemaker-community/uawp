@@ -54,6 +54,9 @@ func SnapshotNamespace(root Root) (NamespaceSnapshot, error) {
 			return err
 		}
 		relative = filepath.ToSlash(relative)
+		if relative == "TRANSACTION.lock" {
+			return nil
+		}
 		info, err := os.Lstat(path)
 		if err != nil {
 			return err
@@ -201,6 +204,19 @@ func verifyExportArchive(path string, manifest ExportManifest) error {
 	}
 	defer gz.Close()
 	reader := tar.NewReader(gz)
+	expected := map[string]ExportEntry{}
+	for _, entry := range manifest.Entries {
+		name := ".uawp/" + entry.Path
+		if entry.Kind == "directory" {
+			name += "/"
+		}
+		expected[name] = entry
+	}
+	manifestBytes, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	manifestBytes = append(manifestBytes, '\n')
 	seen := map[string]bool{}
 	for {
 		header, err := reader.Next()
@@ -210,27 +226,96 @@ func verifyExportArchive(path string, manifest ExportManifest) error {
 		if err != nil {
 			return err
 		}
-		if filepath.IsAbs(header.Name) || strings.Contains(header.Name, "..") || seen[header.Name] {
+		clean := filepath.ToSlash(filepath.Clean(header.Name))
+		if filepath.IsAbs(header.Name) || clean != strings.TrimSuffix(header.Name, "/") || strings.HasPrefix(clean, "../") || seen[header.Name] {
 			return fmt.Errorf("unsafe or duplicate archive entry %s", header.Name)
 		}
 		seen[header.Name] = true
+		if header.Name == "export-manifest.json" {
+			if header.Typeflag != tar.TypeReg {
+				return fmt.Errorf("export manifest is not regular")
+			}
+			content, readErr := io.ReadAll(reader)
+			if readErr != nil {
+				return readErr
+			}
+			if string(content) != string(manifestBytes) {
+				return fmt.Errorf("export manifest content mismatch")
+			}
+			continue
+		}
+		entry, ok := expected[header.Name]
+		if !ok {
+			return fmt.Errorf("unexpected archive entry %s", header.Name)
+		}
+		if uint32(header.Mode)&0o777 != entry.Mode || header.Size != entry.Size {
+			return fmt.Errorf("archive metadata mismatch for %s", header.Name)
+		}
+		if entry.Kind == "directory" {
+			if header.Typeflag != tar.TypeDir {
+				return fmt.Errorf("archive kind mismatch for %s", header.Name)
+			}
+			continue
+		}
 		if header.Typeflag == tar.TypeReg {
 			content, err := io.ReadAll(reader)
 			if err != nil {
 				return err
 			}
-			if header.Name != "export-manifest.json" {
-				relative := strings.TrimPrefix(header.Name, ".uawp/")
-				for _, entry := range manifest.Entries {
-					if entry.Path == relative && entry.SHA256 != plan.HashBytes(content) {
-						return fmt.Errorf("archive hash mismatch for %s", relative)
-					}
-				}
+			if entry.SHA256 != plan.HashBytes(content) {
+				return fmt.Errorf("archive hash mismatch for %s", entry.Path)
 			}
+		} else {
+			return fmt.Errorf("archive kind mismatch for %s", header.Name)
 		}
 	}
 	if !seen["export-manifest.json"] {
 		return fmt.Errorf("export manifest is missing")
 	}
+	for name := range expected {
+		if !seen[name] {
+			return fmt.Errorf("archive entry missing: %s", name)
+		}
+	}
 	return nil
+}
+
+func VerifyExportFile(path string) (ExportManifest, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return ExportManifest{}, err
+	}
+	defer file.Close()
+	gz, err := gzip.NewReader(file)
+	if err != nil {
+		return ExportManifest{}, err
+	}
+	defer gz.Close()
+	reader := tar.NewReader(gz)
+	header, err := reader.Next()
+	if err != nil || header.Name != "export-manifest.json" || header.Typeflag != tar.TypeReg {
+		return ExportManifest{}, fmt.Errorf("export manifest is missing or not first")
+	}
+	raw, err := io.ReadAll(io.LimitReader(reader, 1<<20))
+	if err != nil {
+		return ExportManifest{}, err
+	}
+	var manifest ExportManifest
+	decoder := json.NewDecoder(strings.NewReader(string(raw)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&manifest); err != nil {
+		return ExportManifest{}, err
+	}
+	if manifest.SchemaVersion != "1" || manifest.Protocol != "UAWP" || manifest.ArchiveSHA256 != "" {
+		return ExportManifest{}, fmt.Errorf("invalid export manifest")
+	}
+	if err := verifyExportArchive(path, manifest); err != nil {
+		return ExportManifest{}, err
+	}
+	archive, err := os.ReadFile(path)
+	if err != nil {
+		return ExportManifest{}, err
+	}
+	manifest.ArchiveSHA256 = plan.HashBytes(archive)
+	return manifest, nil
 }
