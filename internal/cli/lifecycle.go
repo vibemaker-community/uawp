@@ -19,6 +19,7 @@ type lifecycleFlags struct {
 	workspace, format, approval, profile, worker, session, agent, purpose, contextFile, milestone, label, controller, reason string
 	generation                                                                                                               uint64
 	nonInteractive                                                                                                           bool
+	sessionProvided, generationProvided                                                                                      bool
 	refs                                                                                                                     []string
 }
 type stringList []string
@@ -50,6 +51,14 @@ func parseLifecycle(command string, args []string, stderr io.Writer) (lifecycleF
 	if set.Parse(args) != nil || set.NArg() != 0 || f.workspace == "" || (f.format != "text" && f.format != "json") {
 		return f, false
 	}
+	set.Visit(func(value *flag.Flag) {
+		switch value.Name {
+		case "session-id":
+			f.sessionProvided = true
+		case "generation":
+			f.generationProvided = true
+		}
+	})
 	f.refs = []string(refs)
 	return f, true
 }
@@ -94,7 +103,7 @@ func runResumeWithRuntime(args []string, rt runtime) int {
 		return writeLifecycleFailure(rt, f.format, "resume", f.workspace, codeWorkspaceInvalid, err.Error(), exitInternal)
 	}
 	surface := selectSurface(f.format, rt.stdinTTY, rt.stdoutTTY, f.nonInteractive)
-	if surface == surfaceHuman && f.worker == "" && f.session == "" && f.generation == 0 && f.approval == "" {
+	if surface == surfaceHuman && f.worker == "" && !f.sessionProvided && !f.generationProvided && f.approval == "" {
 		return runGuidedResume(root, f, rt)
 	}
 	actor, actorErr := resolveMachineActor(f, rt)
@@ -306,8 +315,7 @@ func runLifecycleMutationWithRuntime(command string, args []string, rt runtime) 
 	}
 	root, err := workspace.OpenRoot(f.workspace)
 	if err != nil {
-		fmt.Fprintln(rt.stderr, err)
-		return exitInternal
+		return writeLifecycleFailure(rt, f.format, command, f.workspace, codeWorkspaceInvalid, err.Error(), exitInternal)
 	}
 	surface := selectSurface(f.format, rt.stdinTTY, rt.stdoutTTY, f.nonInteractive)
 	if surface == surfaceHuman {
@@ -333,7 +341,7 @@ func runLifecycleMutationWithRuntime(command string, args []string, rt runtime) 
 	var registryPath string
 	var selectedProfile identity.Profile
 	actor := core.Actor{WorkerID: f.worker, SessionID: f.session, Generation: f.generation}
-	useBinding := command != "recover" && surface == surfaceHuman && f.worker == "" && f.session == "" && f.generation == 0 && f.approval == ""
+	useBinding := command != "recover" && surface == surfaceHuman && f.worker == "" && !f.sessionProvided && !f.generationProvided && f.approval == ""
 	if useBinding {
 		registry, registryPath, err = loadIdentityRegistry(rt)
 		if err != nil {
@@ -437,7 +445,7 @@ func runLifecycleMutationWithRuntime(command string, args []string, rt runtime) 
 			writeOutput(rt.stdout, f.format, commandOutput{SchemaVersion: "1", Command: command, Workspace: root.Path(), WorkerID: actor.WorkerID, SessionID: actor.SessionID, OwnershipGeneration: actor.Generation, Code: codeApprovalDrift, NextAction: "Workspace or actor state changed; request a new preview."})
 			return exitApprovalRequired
 		}
-		code := ""
+		code := codeWorkspaceInvalid
 		if command != "acquire" && command != "recover" {
 			if report, resumeErr := workspace.Resume(root, actor); resumeErr == nil {
 				if report.Outcome == workspace.ResumeBlockedBySession {
