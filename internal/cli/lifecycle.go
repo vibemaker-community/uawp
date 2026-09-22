@@ -79,6 +79,20 @@ func lifecycleArgsWithWorkspace(args []string, rt runtime) ([]string, error) {
 	return append(append([]string(nil), args...), "--workspace", value), nil
 }
 
+func lifecycleRequestedFormat(args []string) string {
+	for index, arg := range args {
+		if (arg == "--format" || arg == "-format") && index+1 < len(args) {
+			return args[index+1]
+		}
+		for _, prefix := range []string{"--format=", "-format="} {
+			if strings.HasPrefix(arg, prefix) {
+				return strings.TrimPrefix(arg, prefix)
+			}
+		}
+	}
+	return "text"
+}
+
 func runResume(args []string, stdout, stderr io.Writer) int {
 	return runResumeWithRuntime(args, defaultRuntime(stdout, stderr))
 }
@@ -90,9 +104,10 @@ func runResumeWithRuntime(args []string, rt runtime) int {
 		fmt.Fprintf(rt.stderr, "resolve current workspace: %v\n", err)
 		return exitInternal
 	}
+	requestedFormat := lifecycleRequestedFormat(args)
 	f, ok := parseLifecycle("resume", args, rt.stderr)
 	if !ok {
-		return writeLifecycleFailure(rt, f.format, "resume", f.workspace, codeInvalidArguments, "Invalid resume arguments.", exitUsage)
+		return writeLifecycleFailure(rt, requestedFormat, "resume", f.workspace, codeInvalidArguments, "Invalid resume arguments.", exitUsage)
 	}
 	if f.profile != "" && f.worker != "" {
 		return writeLifecycleFailure(rt, f.format, "resume", f.workspace, codeProfileAmbiguous, "Choose either --profile or --worker-id, not both.", exitUsage)
@@ -304,9 +319,10 @@ func runLifecycleMutationWithRuntime(command string, args []string, rt runtime) 
 		fmt.Fprintf(rt.stderr, "resolve current workspace: %v\n", err)
 		return exitInternal
 	}
+	requestedFormat := lifecycleRequestedFormat(args)
 	f, ok := parseLifecycle(command, args, rt.stderr)
 	if !ok {
-		return writeLifecycleFailure(rt, f.format, command, f.workspace, codeInvalidArguments, "Invalid lifecycle arguments.", exitUsage)
+		return writeLifecycleFailure(rt, requestedFormat, command, f.workspace, codeInvalidArguments, "Invalid lifecycle arguments.", exitUsage)
 	}
 	if f.profile != "" && f.worker != "" {
 		return writeLifecycleFailure(rt, f.format, command, f.workspace, codeProfileAmbiguous, "Choose either --profile or --worker-id, not both.", exitUsage)

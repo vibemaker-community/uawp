@@ -265,6 +265,29 @@ func TestAutomationArgumentConflictReturnsStructuredJSON(t *testing.T) {
 	}
 }
 
+func TestAutomationParseFailureFindsTrailingJSONFormat(t *testing.T) {
+	for _, args := range [][]string{
+		{"release", "--workspace", t.TempDir(), "--generation", "not-a-number", "--format", "json"},
+		{"resume", "--workspace", t.TempDir(), "--unknown-option", "--format", "json"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := Run(args, &stdout, &stderr); code != exitUsage {
+			t.Fatalf("args=%v code=%d", args, code)
+		}
+		var result struct {
+			Code string `json:"code"`
+		}
+		decoder := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
+		if err := decoder.Decode(&result); err != nil || result.Code != codeInvalidArguments {
+			t.Fatalf("args=%v result=%#v err=%v output=%s", args, result, err, stdout.String())
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			t.Fatalf("extra output: %v", err)
+		}
+	}
+}
+
 func TestHumanSyncPreviewShowsReplacementContent(t *testing.T) {
 	dir := initializedCLIWorkspace(t)
 	rt, _, _, _ := identityRuntime(t, "Rock\nyes\n")
