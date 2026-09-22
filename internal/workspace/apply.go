@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/uawp/uawp/internal/plan"
+	"github.com/uawp/uawp/internal/transaction"
 )
 
 type ApplyOptions struct {
@@ -58,20 +59,20 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 	if len(changes) == 0 {
 		return ApplyReport{PlanID: value.ID, Verified: true}, nil
 	}
-
-	clock := options.Clock
-	if clock == nil {
-		clock = time.Now
+	prepared, err := prepareDurableTransaction(root, value, options)
+	if err != nil {
+		return ApplyReport{}, err
 	}
-	journal := recoveryJournal{PlanID: value.ID, StartedAt: clock().Format(time.RFC3339)}
-	for _, change := range changes {
-		journal.Pending = append(journal.Pending, change.Path)
-	}
-
-	applied := make([]appliedChange, 0, len(changes))
 	appliedPaths := map[string]bool{}
 	for index, change := range changes {
+		if prepared.bootstrap && index == 0 && change.Kind == plan.CreateDir && change.Path == ".uawp" {
+			appliedPaths[change.Path] = true
+			continue
+		}
 		if err := callFailpoint(options, "before-action", index); err != nil {
+			return applyNeedsRecovery(index, err)
+		}
+		if err := callFailpoint(options, "before-publish", index); err != nil {
 			return applyNeedsRecovery(index, err)
 		}
 		if err := verifyInputsExcept(root, value.Inputs(), appliedPaths); err != nil {
@@ -81,20 +82,7 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 		if err != nil {
 			return applyNeedsRecovery(index, err)
 		}
-		if index == 0 && change.Kind == plan.CreateDir && change.Path == ".uawp" {
-			if err := os.Mkdir(target, os.FileMode(change.Mode)); err != nil {
-				return ApplyReport{}, fmt.Errorf("create namespace: %w", err)
-			}
-			applied = append(applied, appliedChange{path: target, kind: change.Kind, logical: change.Path})
-			journal.Completed = append(journal.Completed, change.Path)
-			journal.Pending = journal.Pending[1:]
-			if err := writeJournal(root, journal); err != nil {
-				return rollback(root, journal, applied, err)
-			}
-			continue
-		}
-		journal.InProgress = change.Path
-		if err := writeJournal(root, journal); err != nil {
+		if err := prepared.transition(index, transaction.InProgress); err != nil {
 			return ApplyReport{}, fmt.Errorf("record pending action %s: %w", change.Path, err)
 		}
 
@@ -113,31 +101,30 @@ func Apply(root Root, value plan.Plan, options ApplyOptions) (ApplyReport, error
 		if err != nil {
 			return applyNeedsRecovery(index, fmt.Errorf("apply %s: %w", change.Path, err))
 		}
-		entry := appliedChange{path: target, kind: change.Kind, logical: change.Path, afterSHA256: change.AfterSHA256}
-		applied = append(applied, entry)
 		appliedPaths[change.Path] = true
 		if err := callFailpoint(options, "after-publish", index); err != nil {
 			return ApplyReport{}, fmt.Errorf("publication of %s may require recovery: %w", change.Path, err)
 		}
+		if err := prepared.transition(index, transaction.Applied); err != nil {
+			return ApplyReport{}, fmt.Errorf("record applied action %s: %w", change.Path, err)
+		}
 		if err := verifyAfterState(root, []plan.Change{change}); err != nil {
 			return ApplyReport{}, fmt.Errorf("published %s requires recovery: %w", change.Path, err)
 		}
-		journal.Completed = append(journal.Completed, change.Path)
-		journal.Pending = journal.Pending[1:]
-		journal.InProgress = ""
-		if err := writeJournal(root, journal); err != nil {
-			return ApplyReport{}, fmt.Errorf("publication of %s requires recovery: %w", change.Path, err)
+		if err := callFailpoint(options, "after-action-verify", index); err != nil {
+			return ApplyReport{}, fmt.Errorf("verification of %s may require recovery: %w", change.Path, err)
+		}
+		if err := prepared.transition(index, transaction.Verified); err != nil {
+			return ApplyReport{}, fmt.Errorf("record verified action %s: %w", change.Path, err)
 		}
 	}
 
 	if err := verifyAfterState(root, changes); err != nil {
 		return ApplyReport{}, fmt.Errorf("post-apply verification requires recovery: %w", err)
 	}
-	journalPath := filepath.Join(root.Path(), ".uawp", "RECOVERY.json")
-	if err := os.Remove(journalPath); err != nil && !os.IsNotExist(err) {
-		return ApplyReport{}, fmt.Errorf("remove recovery journal: %w", err)
+	if err := prepared.complete(changes, options); err != nil {
+		return ApplyReport{}, err
 	}
-	_ = syncDir(filepath.Dir(journalPath))
 
 	report := ApplyReport{PlanID: value.ID, Verified: true}
 	for _, change := range changes {
