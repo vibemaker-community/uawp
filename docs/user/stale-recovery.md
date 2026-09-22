@@ -1,6 +1,9 @@
 # Stale ACTIVE recovery
 
 UAWP never decides that an ACTIVE claim is stale. Time passing or process absence cannot release ownership.
+This applies equally to another Agent and another Session of the same Agent.
+The blocked Session remains read-only until a Human Controller reviews and
+explicitly approves recovery.
 
 ```sh
 ./uawp recover --workspace ./project --controller-id human-1 --reason "confirmed worker crash" --format json

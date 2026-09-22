@@ -15,8 +15,8 @@ UAWP owns only `.uawp/`:
 ```
 
 `manifest.json` establishes namespace ownership with `protocol: "UAWP"` and a
-exact supported `stateVersion`. Current state is `1.1.0`; `1.0.0` is the only
-initial upgrade source. Unknown minor versions, unknown keys, duplicate keys,
+exact supported `stateVersion`. Current state is `1.2.0`; released `1.0.0` and
+`1.1.0` are the only upgrade sources. Unknown minor versions, unknown keys, duplicate keys,
 trailing JSON, and future major versions are not treated as ready.
 
 `migrations/` contains immutable version-transition receipts. `recovery/`
@@ -32,15 +32,20 @@ source. `checkpoints/` is reserved for milestone snapshots.
 `ACTIVE_WORKER.md` represents persistent ownership. It permits exactly two
 states:
 
-- `ACTIVE`: the named worker has substantive shared-write authority and no
-  release time.
+- `ACTIVE`: the exact Worker ID, Session ID, and positive Ownership Generation
+  tuple has substantive shared-write authority and no release time.
 - `RELEASED`: no worker owns shared writes; the last owner and release time are
   retained for audit continuity.
 
-Acquisition and release timestamps use RFC 3339 with an explicit timezone. A
+Every acquisition increments the generation. A normal release requires the
+exact ACTIVE tuple and retains it for audit continuity. The same Worker ID under
+another Session is a conflict and cannot write. Acquisition and release timestamps use RFC 3339 with an explicit timezone. A
 release cannot precede acquisition. Implemented operations are read-only
 resume, acquire, release, context sync, immutable milestone checkpoint,
 context-first handoff, and Human Controller-authorized stale recovery.
 
-Recovery never infers staleness or acquires a replacement owner. State v1 has
+Recovery never infers staleness or acquires a replacement owner; a Human
+Controller must arbitrate stale ACTIVE ownership. Migration is accepted only
+from valid RELEASED `1.0.0` or `1.1.0` state and writes the final manifest once.
+State v1 has
 no TTL, heartbeat, lease expiry, or automatic release.

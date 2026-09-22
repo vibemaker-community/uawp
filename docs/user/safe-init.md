@@ -6,6 +6,13 @@ such as `AGENTS.md` and `CLAUDE.md`.
 
 ## Preview, then approve
 
+For a person at a terminal, enter the intended folder and run `uawp init`.
+UAWP displays the planned `.uawp/` files and applies only after `yes`. The exact
+in-memory preview is used; no plan ID needs to be copied. Git is optional, and
+ordinary document folders are supported.
+
+## Automation and expert mode
+
 Build the CLI with `go build -o ./uawp ./cmd/uawp`, then use an absolute
 workspace path. The first command returns a plan and exits 5; it does not
 mutate the project.

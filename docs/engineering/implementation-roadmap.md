@@ -1,6 +1,7 @@
 # UAWP v1.0 Implementation Roadmap
 
-**Status:** Plans 1-4 implemented; Plan 4.5 is next; Plan 5 remains pending
+**Status:** Plans 1-4 implemented; Plan 4.5 implementation candidate awaits its
+release gates; Plan 5 remains pending
 **Spec:** `docs/superpowers/specs/2026-09-21-uawp-product-engineering-design.md`
 
 The product specification spans several independently reviewable subsystems.
@@ -71,6 +72,10 @@ Add three compatible operating surfaces over the same Core operations:
 
 This phase changes presentation and command ergonomics, not ownership,
 transaction, preservation, or adapter semantics.
+
+It migrates released `1.0.0` or `1.1.0` state to exact state `1.2.0`, adds
+Worker profiles and Session bindings outside the Workspace, and fences every
+protected write with Worker ID, Session ID, and ownership generation.
 
 **Deliverable:** routine `init`, `resume`, `sync`, `checkpoint`, and `handoff`
 workflows are concise for people and deterministic for agents, while expert

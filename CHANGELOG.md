@@ -19,11 +19,16 @@
 - Durable transaction journals, backups, classification, rollback, and continuation.
 - Evidence-limited repair, full provider detach, and verified-export purge.
 - Expert commands: `upgrade`, `repair`, `uninstall`, and `transaction`.
+- State `1.2.0`, local Worker profiles, per-conversation Session IDs,
+  monotonically increasing ownership generations, and guided human workflows.
+- Additive structured automation fields and Prompt Library Version 2.
 
 ### Safety
 
 - Adapter commands edit only an approved, exact import or managed block in the
   resolved native entry; initialization still never edits native files.
 - Initialization requires an exact, explicit plan approval token.
+- Human commands confirm one exact in-memory preview; JSON, redirected, and
+  non-interactive commands never prompt.
 - Native and manifest drift, unsafe file types, malformed ownership markers,
   and uncertain unacknowledged routes stop mutation.
