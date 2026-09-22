@@ -98,6 +98,8 @@ type PersistedPlan struct {
 
 type Metadata struct {
 	ActorWorkerID        string `json:"actorWorkerID,omitempty"`
+	ActorSessionID       string `json:"actorSessionID,omitempty"`
+	OwnershipGeneration  uint64 `json:"ownershipGeneration,omitempty"`
 	Reason               string `json:"reason,omitempty"`
 	ControllerID         string `json:"controllerID,omitempty"`
 	TransactionID        string `json:"transactionID,omitempty"`

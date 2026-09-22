@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -12,7 +13,8 @@ const maxOwnershipBytes = 1 << 20
 
 var ownershipFields = map[string]bool{
 	"Status": true, "Worker ID": true, "Agent": true,
-	"Acquired At": true, "Released At": true, "Purpose": true,
+	"Session ID": true, "Generation": true, "Acquired At": true,
+	"Released At": true, "Purpose": true,
 }
 
 func DecodeOwnership(reader io.Reader) (Ownership, error) {
@@ -55,7 +57,15 @@ func DecodeOwnership(reader io.Reader) (Ownership, error) {
 	if err != nil {
 		return Ownership{}, err
 	}
-	value := Ownership{Status: OwnershipStatus(fields["Status"]), WorkerID: fields["Worker ID"], Agent: fields["Agent"], AcquiredAt: acquired, Purpose: fields["Purpose"]}
+	generation, err := strconv.ParseUint(fields["Generation"], 10, 64)
+	if err != nil {
+		return Ownership{}, newDomainError(ErrInvalidState, "invalid ownership generation %q", fields["Generation"])
+	}
+	sessionID := fields["Session ID"]
+	if strings.EqualFold(sessionID, "none") {
+		sessionID = ""
+	}
+	value := Ownership{Status: OwnershipStatus(fields["Status"]), WorkerID: fields["Worker ID"], SessionID: sessionID, Generation: generation, Agent: fields["Agent"], AcquiredAt: acquired, Purpose: fields["Purpose"]}
 	if released := fields["Released At"]; released != "" && !strings.EqualFold(released, "none") {
 		parsed, err := ParseTimestamp(released)
 		if err != nil {
@@ -77,5 +87,9 @@ func EncodeOwnership(value Ownership) ([]byte, error) {
 	if value.ReleasedAt != nil {
 		released = FormatTimestamp(*value.ReleasedAt)
 	}
-	return []byte(fmt.Sprintf("# UAWP Active Worker\n\n- Status: %s\n- Worker ID: %s\n- Agent: %s\n- Acquired At: %s\n- Released At: %s\n- Purpose: %s\n", value.Status, value.WorkerID, value.Agent, FormatTimestamp(value.AcquiredAt), released, value.Purpose)), nil
+	sessionID := value.SessionID
+	if sessionID == "" {
+		sessionID = "none"
+	}
+	return []byte(fmt.Sprintf("# UAWP Active Worker\n\n- Status: %s\n- Worker ID: %s\n- Session ID: %s\n- Generation: %d\n- Agent: %s\n- Acquired At: %s\n- Released At: %s\n- Purpose: %s\n", value.Status, value.WorkerID, sessionID, value.Generation, value.Agent, FormatTimestamp(value.AcquiredAt), released, value.Purpose)), nil
 }

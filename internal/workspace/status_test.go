@@ -151,7 +151,7 @@ func initializeFixture(t *testing.T, root Root) {
 
 func writeOwnership(t *testing.T, root Root, status, releasedAt string) {
 	t.Helper()
-	content := fmt.Sprintf("# UAWP Active Worker\n\n- Status: %s\n- Worker ID: worker-a\n- Agent: Test Agent\n- Acquired At: 2026-09-21T10:00:00+08:00\n- Released At: %s\n- Purpose: test diagnostics\n", status, releasedAt)
+	content := fmt.Sprintf("# UAWP Active Worker\n\n- Status: %s\n- Worker ID: worker-a\n- Session ID: session-a\n- Generation: 1\n- Agent: Test Agent\n- Acquired At: 2026-09-21T10:00:00+08:00\n- Released At: %s\n- Purpose: test diagnostics\n", status, releasedAt)
 	mustWrite(t, filepath.Join(root.Path(), ".uawp", "ACTIVE_WORKER.md"), content)
 }
 

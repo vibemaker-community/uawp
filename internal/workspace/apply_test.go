@@ -240,7 +240,7 @@ func TestApplyUpdateRejectsDriftWithoutOverwrite(t *testing.T) {
 
 func TestApplyBlocksExistingRecoveryAndRevalidatesInputsPerAction(t *testing.T) {
 	root, at := activeFixture(t)
-	p, _ := PlanContextSync(root, "worker-a", []byte("changed"))
+	p, _ := PlanContextSync(root, activeTestActor(), []byte("changed"))
 	mustWrite(t, filepath.Join(root.Path(), ".uawp", "RECOVERY.json"), "{}")
 	if _, err := Apply(root, p, ApplyOptions{ApprovedPlanID: p.ID}); err == nil {
 		t.Fatal("applied over recovery")
@@ -249,7 +249,7 @@ func TestApplyBlocksExistingRecoveryAndRevalidatesInputsPerAction(t *testing.T) 
 	ownerPath := filepath.Join(root.Path(), ".uawp", "ACTIVE_WORKER.md")
 	_, err := Apply(root, p, ApplyOptions{ApprovedPlanID: p.ID, Failpoint: func(stage string, index int) error {
 		if stage == "before-action" && index == 0 {
-			next := core.Ownership{Status: core.Active, WorkerID: "worker-b", Agent: "B", AcquiredAt: at, Purpose: "other"}
+			next := core.Ownership{Status: core.Active, WorkerID: "worker-b", SessionID: "session-b", Generation: 2, Agent: "B", AcquiredAt: at, Purpose: "other"}
 			raw, _ := core.EncodeOwnership(next)
 			return os.WriteFile(ownerPath, raw, 0o600)
 		}

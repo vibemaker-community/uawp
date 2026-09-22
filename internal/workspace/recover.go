@@ -35,7 +35,7 @@ func PlanStaleRecoveryAt(root Root, request core.RecoveryRequest) (plan.Plan, er
 	if err != nil {
 		return plan.Plan{}, err
 	}
-	entry := fmt.Sprintf("\n## Human Controller stale-claim recovery — %s\n\n- Controller ID: %s\n- Reason: %s\n- Old Worker ID: %s\n- Old Agent: %s\n- Old Acquired At: %s\n- Recovered At: %s\n", core.FormatTimestamp(audit.RecoveredAt), audit.ControllerID, audit.Reason, audit.OldWorkerID, audit.OldAgent, core.FormatTimestamp(audit.OldAcquiredAt), core.FormatTimestamp(audit.RecoveredAt))
+	entry := fmt.Sprintf("\n## Human Controller stale-claim recovery — %s\n\n- Controller ID: %s\n- Reason: %s\n- Old Worker ID: %s\n- Old Session ID: %s\n- Old Generation: %d\n- Old Agent: %s\n- Old Acquired At: %s\n- Recovered At: %s\n", core.FormatTimestamp(audit.RecoveredAt), audit.ControllerID, audit.Reason, audit.OldWorkerID, audit.OldSessionID, audit.OldGeneration, audit.OldAgent, core.FormatTimestamp(audit.OldAcquiredAt), core.FormatTimestamp(audit.RecoveredAt))
 	changes := []plan.Change{
 		plan.NewUpdateFile(".uawp/DECISIONS.md", 0o600, plan.HashBytes(decisions), append(append([]byte(nil), decisions...), []byte(entry)...)).WithSequence(10),
 		plan.NewUpdateFile(".uawp/ACTIVE_WORKER.md", 0o600, plan.HashBytes(ownerBytes), nextBytes).WithSequence(20),

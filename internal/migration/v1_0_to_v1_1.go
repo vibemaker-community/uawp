@@ -38,13 +38,6 @@ func (step V1_0ToV1_1) Plan(context Context) ([]plan.Change, error) {
 			return nil, fmt.Errorf("migration input %s is not a directory", path)
 		}
 	}
-	target := context.Manifest
-	target.StateVersion = step.To()
-	encoded, err := core.EncodeManifest(target)
-	if err != nil {
-		return nil, err
-	}
-	changes = append(changes, plan.NewUpdateFile(".uawp/manifest.json", 0o600, manifestHash, encoded).WithSequence(100))
 	return changes, nil
 }
 

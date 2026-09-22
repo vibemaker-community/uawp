@@ -14,13 +14,13 @@ func TestValidateOwnership(t *testing.T) {
 		value   Ownership
 		wantErr bool
 	}{
-		{"active", Ownership{Status: Active, WorkerID: "worker-a", Agent: "Agent", AcquiredAt: acquired, Purpose: "test"}, false},
-		{"active cannot be released", Ownership{Status: Active, WorkerID: "worker-a", Agent: "Agent", AcquiredAt: acquired, ReleasedAt: &released, Purpose: "test"}, true},
+		{"active", Ownership{Status: Active, WorkerID: "worker-a", SessionID: "session-a", Generation: 1, Agent: "Agent", AcquiredAt: acquired, Purpose: "test"}, false},
+		{"active cannot be released", Ownership{Status: Active, WorkerID: "worker-a", SessionID: "session-a", Generation: 1, Agent: "Agent", AcquiredAt: acquired, ReleasedAt: &released, Purpose: "test"}, true},
 		{"released needs time", Ownership{Status: Released, WorkerID: "worker-a", Agent: "Agent", AcquiredAt: acquired, Purpose: "test"}, true},
 		{"released", Ownership{Status: Released, WorkerID: "worker-a", Agent: "Agent", AcquiredAt: acquired, ReleasedAt: &released, Purpose: "test"}, false},
 		{"release before acquire", Ownership{Status: Released, WorkerID: "worker-a", Agent: "Agent", AcquiredAt: acquired, ReleasedAt: &before, Purpose: "test"}, true},
 		{"unknown status", Ownership{Status: "STALE", WorkerID: "worker-a", Agent: "Agent", AcquiredAt: acquired, Purpose: "test"}, true},
-		{"missing purpose", Ownership{Status: Active, WorkerID: "worker-a", Agent: "Agent", AcquiredAt: acquired}, true},
+		{"missing purpose", Ownership{Status: Active, WorkerID: "worker-a", SessionID: "session-a", Generation: 1, Agent: "Agent", AcquiredAt: acquired}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -30,6 +30,31 @@ func TestValidateOwnership(t *testing.T) {
 			}
 			if !tt.wantErr && err != nil {
 				t.Fatalf("ValidateOwnership() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateOwnershipRequiresConsistentSessionTuple(t *testing.T) {
+	at := time.Date(2026, 9, 22, 10, 0, 0, 0, time.UTC)
+	released := at.Add(time.Hour)
+	tests := []struct {
+		name    string
+		value   Ownership
+		wantErr bool
+	}{
+		{"active tuple", Ownership{Status: Active, WorkerID: "worker-a", SessionID: "session-a", Generation: 1, Agent: "Agent A", AcquiredAt: at, Purpose: "work"}, false},
+		{"active missing session", Ownership{Status: Active, WorkerID: "worker-a", Generation: 1, Agent: "Agent A", AcquiredAt: at, Purpose: "work"}, true},
+		{"active zero generation", Ownership{Status: Active, WorkerID: "worker-a", SessionID: "session-a", Agent: "Agent A", AcquiredAt: at, Purpose: "work"}, true},
+		{"bootstrap released", Ownership{Status: Released, WorkerID: "uawp-bootstrap", Agent: "UAWP", AcquiredAt: at, ReleasedAt: &released, Purpose: "Initialize"}, false},
+		{"released audit tuple", Ownership{Status: Released, WorkerID: "worker-a", SessionID: "session-a", Generation: 2, Agent: "Agent A", AcquiredAt: at, ReleasedAt: &released, Purpose: "work"}, false},
+		{"released split tuple", Ownership{Status: Released, WorkerID: "worker-a", SessionID: "session-a", Agent: "Agent A", AcquiredAt: at, ReleasedAt: &released, Purpose: "work"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateOwnership(tt.value)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("error=%v wantErr=%t", err, tt.wantErr)
 			}
 		})
 	}

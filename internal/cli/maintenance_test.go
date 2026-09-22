@@ -20,6 +20,10 @@ func TestUpgradePreviewAndApprove(t *testing.T) {
 	if err := os.WriteFile(manifestPath, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	legacy := "# UAWP Active Worker\n\n- Status: RELEASED\n- Worker ID: uawp-bootstrap\n- Agent: UAWP\n- Acquired At: 2026-09-21T10:00:00+08:00\n- Released At: 2026-09-21T10:00:00+08:00\n- Purpose: Initialize UAWP workspace state\n"
+	if err := os.WriteFile(filepath.Join(dir, ".uawp", "ACTIVE_WORKER.md"), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	preview := runMaintenanceCLI(t, 5, "upgrade", "--workspace", dir, "--format", "json")
 	var parsed cliOutput
 	if err := json.Unmarshal(preview, &parsed); err != nil {
@@ -30,7 +34,7 @@ func TestUpgradePreviewAndApprove(t *testing.T) {
 	}
 	runMaintenanceCLI(t, 0, "upgrade", "--workspace", dir, "--approve", parsed.PlanID, "--format", "json")
 	content, _ := os.ReadFile(manifestPath)
-	if !bytes.Contains(content, []byte(`"stateVersion": "1.1.0"`)) {
+	if !bytes.Contains(content, []byte(`"stateVersion": "1.2.0"`)) {
 		t.Fatalf("manifest=%s", content)
 	}
 }

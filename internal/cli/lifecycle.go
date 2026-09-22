@@ -14,8 +14,9 @@ import (
 )
 
 type lifecycleFlags struct {
-	workspace, format, approval, worker, agent, purpose, contextFile, milestone, label, controller, reason string
-	refs                                                                                                   []string
+	workspace, format, approval, worker, session, agent, purpose, contextFile, milestone, label, controller, reason string
+	generation                                                                                                      uint64
+	refs                                                                                                            []string
 }
 type stringList []string
 
@@ -31,6 +32,8 @@ func parseLifecycle(command string, args []string, stderr io.Writer) (lifecycleF
 	set.StringVar(&f.format, "format", "text", "output format")
 	set.StringVar(&f.approval, "approve", "", "approved plan ID")
 	set.StringVar(&f.worker, "worker-id", "", "worker ID")
+	set.StringVar(&f.session, "session-id", "", "conversation or execution Session ID")
+	set.Uint64Var(&f.generation, "generation", 0, "ownership generation")
 	set.StringVar(&f.agent, "agent", "", "agent label")
 	set.StringVar(&f.purpose, "purpose", "", "operation purpose")
 	set.StringVar(&f.contextFile, "context-file", "", "context input file")
@@ -55,7 +58,7 @@ func runResume(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return exitInternal
 	}
-	report, err := workspace.Resume(root, f.worker)
+	report, err := workspace.Resume(root, core.Actor{WorkerID: f.worker, SessionID: f.session, Generation: f.generation})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return exitInvalidState
@@ -85,9 +88,9 @@ func runLifecycleMutation(command string, args []string, stdout, stderr io.Write
 	var value plan.Plan
 	switch command {
 	case "acquire":
-		value, err = workspace.PlanAcquireAt(root, core.AcquireRequest{WorkerID: f.worker, Agent: f.agent, Purpose: f.purpose, At: generatedAt})
+		value, err = workspace.PlanAcquireAt(root, core.AcquireRequest{WorkerID: f.worker, SessionID: f.session, Agent: f.agent, Purpose: f.purpose, At: generatedAt})
 	case "release":
-		value, err = workspace.PlanReleaseAt(root, core.ReleaseRequest{WorkerID: f.worker, At: generatedAt})
+		value, err = workspace.PlanReleaseAt(root, core.ReleaseRequest{Actor: core.Actor{WorkerID: f.worker, SessionID: f.session, Generation: f.generation}, At: generatedAt})
 	case "recover":
 		value, err = workspace.PlanStaleRecoveryAt(root, core.RecoveryRequest{ControllerID: f.controller, Reason: f.reason, At: generatedAt})
 	case "sync", "handoff":
@@ -100,14 +103,15 @@ func runLifecycleMutation(command string, args []string, stdout, stderr io.Write
 			err = fmt.Errorf("--context-file is required")
 		}
 		if err == nil {
+			actor := core.Actor{WorkerID: f.worker, SessionID: f.session, Generation: f.generation}
 			if command == "sync" {
-				value, err = workspace.PlanContextSync(root, f.worker, content)
+				value, err = workspace.PlanContextSync(root, actor, content)
 			} else {
-				value, err = workspace.PlanHandoffAt(root, workspace.HandoffRequest{WorkerID: f.worker, FinalContext: content, Purpose: f.purpose, At: generatedAt})
+				value, err = workspace.PlanHandoffAt(root, workspace.HandoffRequest{Actor: actor, FinalContext: content, Purpose: f.purpose, At: generatedAt})
 			}
 		}
 	case "checkpoint":
-		value, err = workspace.PlanCheckpointAt(root, workspace.CheckpointRequest{WorkerID: f.worker, MilestoneID: f.milestone, Label: f.label, DecisionReferences: f.refs, At: generatedAt})
+		value, err = workspace.PlanCheckpointAt(root, workspace.CheckpointRequest{Actor: core.Actor{WorkerID: f.worker, SessionID: f.session, Generation: f.generation}, MilestoneID: f.milestone, Label: f.label, DecisionReferences: f.refs, At: generatedAt})
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, err)

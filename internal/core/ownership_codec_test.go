@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const releasedOwnership = "# UAWP Active Worker\n\n- Status: RELEASED\n- Worker ID: worker-a\n- Agent: Test Agent\n- Acquired At: 2026-09-21T10:00:00+08:00\n- Released At: 2026-09-21T11:00:00+08:00\n- Purpose: test work\n"
+const releasedOwnership = "# UAWP Active Worker\n\n- Status: RELEASED\n- Worker ID: worker-a\n- Session ID: session-a\n- Generation: 2\n- Agent: Test Agent\n- Acquired At: 2026-09-21T10:00:00+08:00\n- Released At: 2026-09-21T11:00:00+08:00\n- Purpose: test work\n"
 
 func TestDecodeOwnershipRoundTripAndCRLF(t *testing.T) {
 	value, err := DecodeOwnership(strings.NewReader(strings.ReplaceAll(releasedOwnership, "\n", "\r\n")))
@@ -27,6 +27,11 @@ func TestDecodeOwnershipRejectsAmbiguousOrInvalidDocuments(t *testing.T) {
 	cases := map[string]string{
 		"duplicate":               releasedOwnership + "- Status: ACTIVE\n",
 		"missing":                 strings.Replace(releasedOwnership, "- Worker ID: worker-a\n", "", 1),
+		"missing session":         strings.Replace(releasedOwnership, "- Session ID: session-a\n", "", 1),
+		"missing generation":      strings.Replace(releasedOwnership, "- Generation: 2\n", "", 1),
+		"non-numeric generation":  strings.Replace(releasedOwnership, "- Generation: 2\n", "- Generation: two\n", 1),
+		"negative generation":     strings.Replace(releasedOwnership, "- Generation: 2\n", "- Generation: -1\n", 1),
+		"overflow generation":     strings.Replace(releasedOwnership, "- Generation: 2\n", "- Generation: 18446744073709551616\n", 1),
 		"unknown status":          strings.Replace(releasedOwnership, "RELEASED", "STALE", 1),
 		"conflicting release":     strings.Replace(releasedOwnership, "2026-09-21T11:00:00+08:00", "none", 1),
 		"duplicate after heading": releasedOwnership + "\n## Later\n- Worker ID: worker-b\n",
@@ -48,7 +53,7 @@ func TestEncodeOwnershipRejectsInvalidValue(t *testing.T) {
 		t.Fatal("encoded invalid ownership")
 	}
 	now := time.Date(2026, 9, 21, 10, 0, 0, 0, time.FixedZone("UTC+8", 8*60*60))
-	value := Ownership{Status: Active, WorkerID: "w", Agent: "a", AcquiredAt: now, Purpose: "p"}
+	value := Ownership{Status: Active, WorkerID: "w", SessionID: "s", Generation: 1, Agent: "a", AcquiredAt: now, Purpose: "p"}
 	if _, err := EncodeOwnership(value); err != nil {
 		t.Fatal(err)
 	}
@@ -57,9 +62,9 @@ func TestEncodeOwnershipRejectsInvalidValue(t *testing.T) {
 func TestEncodeOwnershipRejectsMultilineFields(t *testing.T) {
 	now := time.Now()
 	for _, value := range []Ownership{
-		{Status: Active, WorkerID: "w\n- Status: RELEASED", Agent: "a", AcquiredAt: now, Purpose: "p"},
-		{Status: Active, WorkerID: "w", Agent: "a\rbroken", AcquiredAt: now, Purpose: "p"},
-		{Status: Active, WorkerID: "w", Agent: "a", AcquiredAt: now, Purpose: "p\ninjected"},
+		{Status: Active, WorkerID: "w\n- Status: RELEASED", SessionID: "s", Generation: 1, Agent: "a", AcquiredAt: now, Purpose: "p"},
+		{Status: Active, WorkerID: "w", SessionID: "s", Generation: 1, Agent: "a\rbroken", AcquiredAt: now, Purpose: "p"},
+		{Status: Active, WorkerID: "w", SessionID: "s", Generation: 1, Agent: "a", AcquiredAt: now, Purpose: "p\ninjected"},
 	} {
 		if _, err := EncodeOwnership(value); err == nil {
 			t.Fatal("encoded multiline field")

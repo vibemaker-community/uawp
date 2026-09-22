@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-const CurrentStateVersion = "1.1.0"
+const CurrentStateVersion = "1.2.0"
 
 type StateCompatibility string
 
@@ -20,7 +20,7 @@ func ClassifyStateVersion(version string) StateCompatibility {
 	switch version {
 	case CurrentStateVersion:
 		return StateCurrent
-	case "1.0.0":
+	case "1.0.0", "1.1.0":
 		return StateUpgradeRequired
 	}
 	majorText, _, ok := strings.Cut(version, ".")

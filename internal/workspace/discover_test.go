@@ -52,7 +52,8 @@ func TestDiscoverClassifiesNamespace(t *testing.T) {
 func TestDiscoverVersionCompatibility(t *testing.T) {
 	for version, want := range map[string]core.StateCompatibility{
 		"1.0.0":  core.StateUpgradeRequired,
-		"1.1.0":  core.StateCurrent,
+		"1.1.0":  core.StateUpgradeRequired,
+		"1.2.0":  core.StateCurrent,
 		"1.99.0": core.StateUnsupported,
 		"2.0.0":  core.StateFutureMajor,
 	} {

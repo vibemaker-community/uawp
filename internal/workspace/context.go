@@ -12,11 +12,10 @@ import (
 
 const maxContextBytes = 1 << 20
 
-func PlanContextSync(root Root, workerID string, content []byte) (plan.Plan, error) {
+func PlanContextSync(root Root, actor core.Actor, content []byte) (plan.Plan, error) {
 	if status := Status(root); status.Code != CodeActiveOwner {
 		return plan.Plan{}, fmt.Errorf("workspace blocks context sync: %s", status.Observed)
 	}
-	workerID = strings.TrimSpace(workerID)
 	if len(content) == 0 || len(content) > maxContextBytes {
 		return plan.Plan{}, fmt.Errorf("context must contain 1 to 1048576 bytes")
 	}
@@ -29,8 +28,8 @@ func PlanContextSync(root Root, workerID string, content []byte) (plan.Plan, err
 	if err != nil {
 		return plan.Plan{}, err
 	}
-	if owner.Status != core.Active || owner.WorkerID != workerID {
-		return plan.Plan{}, fmt.Errorf("worker %q is not ACTIVE owner", workerID)
+	if err := core.ValidateActiveActor(owner, actor); err != nil {
+		return plan.Plan{}, err
 	}
 	contextPath := filepath.Join(root.Path(), ".uawp", "CONTEXT.md")
 	before, err := os.ReadFile(contextPath)
@@ -38,7 +37,7 @@ func PlanContextSync(root Root, workerID string, content []byte) (plan.Plan, err
 		return plan.Plan{}, err
 	}
 	inputs := []plan.Input{{Path: ".uawp/ACTIVE_WORKER.md", SHA256: plan.HashBytes(ownerBytes)}}
-	meta := plan.Metadata{ActorWorkerID: workerID}
+	meta := plan.Metadata{ActorWorkerID: strings.TrimSpace(actor.WorkerID), ActorSessionID: strings.TrimSpace(actor.SessionID), OwnershipGeneration: actor.Generation}
 	if string(before) == string(content) {
 		return plan.NewForWorkspaceInputsMetadata("context-sync", root.Path(), nil, inputs, meta), nil
 	}

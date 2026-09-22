@@ -12,6 +12,10 @@ import (
 )
 
 func oldVersionWorkspace(t *testing.T) Root {
+	return oldVersionWorkspaceAt(t, "1.0.0")
+}
+
+func oldVersionWorkspaceAt(t *testing.T, version string) Root {
 	t.Helper()
 	root := openTempRoot(t)
 	initializeFixture(t, root)
@@ -19,7 +23,7 @@ func oldVersionWorkspace(t *testing.T) Root {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest.StateVersion = "1.0.0"
+	manifest.StateVersion = version
 	raw, err := core.EncodeManifest(manifest)
 	if err != nil {
 		t.Fatal(err)
@@ -27,17 +31,18 @@ func oldVersionWorkspace(t *testing.T) Root {
 	if err := os.WriteFile(filepath.Join(root.Path(), ".uawp", "manifest.json"), raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	mustWrite(t, filepath.Join(root.Path(), ".uawp", "ACTIVE_WORKER.md"), "# UAWP Active Worker\n\n- Status: RELEASED\n- Worker ID: uawp-bootstrap\n- Agent: UAWP\n- Acquired At: 2026-09-21T10:00:00+08:00\n- Released At: 2026-09-21T10:00:00+08:00\n- Purpose: Initialize UAWP workspace state\n")
 	return root
 }
 
-func TestUpgradePlansAndAppliesV1_0ToV1_1(t *testing.T) {
+func TestUpgradePlansAndAppliesV1_0ToV1_2(t *testing.T) {
 	root := oldVersionWorkspace(t)
 	at := time.Date(2026, 9, 22, 14, 0, 0, 0, time.UTC)
 	p, report, err := PlanUpgradeAt(root, adapter.RuntimeFacts{}, at)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.From != "1.0.0" || report.To != "1.1.0" || len(p.Changes()) == 0 {
+	if report.From != "1.0.0" || report.To != "1.2.0" || len(p.Changes()) == 0 {
 		t.Fatalf("plan=%#v report=%#v", p, report)
 	}
 	changes := p.Changes()
@@ -59,6 +64,28 @@ func TestUpgradePlansAndAppliesV1_0ToV1_1(t *testing.T) {
 	}
 }
 
+func TestUpgradePlansAndAppliesV1_1ToV1_2(t *testing.T) {
+	root := oldVersionWorkspaceAt(t, "1.1.0")
+	at := time.Date(2026, 9, 22, 14, 30, 0, 0, time.UTC)
+	p, report, err := PlanUpgradeAt(root, adapter.RuntimeFacts{}, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.From != "1.1.0" || report.To != "1.2.0" {
+		t.Fatalf("report=%#v", report)
+	}
+	if _, err := Apply(root, p, ApplyOptions{ApprovedPlanID: p.ID, Clock: func() time.Time { return at }}); err != nil {
+		t.Fatal(err)
+	}
+	owner, err := readOwnership(filepath.Join(root.Path(), ".uawp", "ACTIVE_WORKER.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if owner.Status != core.Released || owner.SessionID != "" || owner.Generation != 0 {
+		t.Fatalf("owner=%#v", owner)
+	}
+}
+
 func TestUpgradeRejectsUnsupportedActiveAndDriftedState(t *testing.T) {
 	at := time.Date(2026, 9, 22, 14, 0, 0, 0, time.UTC)
 	unsupported := oldVersionWorkspace(t)
@@ -73,8 +100,8 @@ func TestUpgradeRejectsUnsupportedActiveAndDriftedState(t *testing.T) {
 	}
 
 	active := oldVersionWorkspace(t)
-	writeOwnership(t, active, "ACTIVE", "none")
-	if _, _, err := PlanUpgradeAt(active, adapter.RuntimeFacts{}, at); err == nil {
+	mustWrite(t, filepath.Join(active.Path(), ".uawp", "ACTIVE_WORKER.md"), "# UAWP Active Worker\n\n- Status: ACTIVE\n- Worker ID: worker-a\n- Agent: Agent A\n- Acquired At: 2026-09-21T10:00:00+08:00\n- Released At: none\n- Purpose: active work\n")
+	if _, _, err := PlanUpgradeAt(active, adapter.RuntimeFacts{}, at); err == nil || err.Error() != "upgrade requires RELEASED ownership" {
 		t.Fatal("upgrade accepted ACTIVE ownership")
 	}
 
@@ -93,7 +120,7 @@ func TestUpgradeRejectsUnsupportedActiveAndDriftedState(t *testing.T) {
 	}
 }
 
-func TestCurrentInitUsesV1_1Layout(t *testing.T) {
+func TestCurrentInitUsesV1_2Layout(t *testing.T) {
 	root := openTempRoot(t)
 	p, err := PlanInit(root)
 	if err != nil {

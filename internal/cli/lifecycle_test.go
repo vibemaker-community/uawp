@@ -40,7 +40,7 @@ func decodePlanToken(t *testing.T, raw []byte) string {
 
 func TestResumeCommandReportsAvailability(t *testing.T) {
 	dir := initializedCLIWorkspace(t)
-	raw := runCLI(t, []string{"resume", "--workspace", dir, "--worker-id", "worker-a", "--format", "json"}, 0)
+	raw := runCLI(t, []string{"resume", "--workspace", dir, "--worker-id", "worker-a", "--session-id", "session-a", "--format", "json"}, 0)
 	if !bytes.Contains(raw, []byte("ACQUIRE_AVAILABLE")) {
 		t.Fatalf("output=%s", raw)
 	}
@@ -53,11 +53,11 @@ func TestAcquireReleaseSyncCheckpointHandoffRecoverCommandsPreview(t *testing.T)
 		t.Fatal(err)
 	}
 	commands := [][]string{
-		{"acquire", "--workspace", dir, "--worker-id", "worker-a", "--agent", "Agent A", "--purpose", "work", "--format", "json"},
-		{"release", "--workspace", dir, "--worker-id", "worker-a", "--format", "json"},
-		{"sync", "--workspace", dir, "--worker-id", "worker-a", "--context-file", contextFile, "--format", "json"},
-		{"checkpoint", "--workspace", dir, "--worker-id", "worker-a", "--milestone-id", "phase-2", "--label", "Phase 2", "--format", "json"},
-		{"handoff", "--workspace", dir, "--worker-id", "worker-a", "--purpose", "pause", "--context-file", contextFile, "--format", "json"},
+		{"acquire", "--workspace", dir, "--worker-id", "worker-a", "--session-id", "session-a", "--agent", "Agent A", "--purpose", "work", "--format", "json"},
+		{"release", "--workspace", dir, "--worker-id", "worker-a", "--session-id", "session-a", "--generation", "1", "--format", "json"},
+		{"sync", "--workspace", dir, "--worker-id", "worker-a", "--session-id", "session-a", "--generation", "1", "--context-file", contextFile, "--format", "json"},
+		{"checkpoint", "--workspace", dir, "--worker-id", "worker-a", "--session-id", "session-a", "--generation", "1", "--milestone-id", "phase-2", "--label", "Phase 2", "--format", "json"},
+		{"handoff", "--workspace", dir, "--worker-id", "worker-a", "--session-id", "session-a", "--generation", "1", "--purpose", "pause", "--context-file", contextFile, "--format", "json"},
 		{"recover", "--workspace", dir, "--controller-id", "human-1", "--reason", "crash", "--format", "json"},
 	}
 	// Acquire can preview while RELEASED; the remaining commands must parse but
@@ -74,10 +74,10 @@ func TestAcquireReleaseSyncCheckpointHandoffRecoverCommandsPreview(t *testing.T)
 
 func TestAcquireCommandPreviewAndApply(t *testing.T) {
 	dir := initializedCLIWorkspace(t)
-	args := []string{"acquire", "--workspace", dir, "--worker-id", "worker-a", "--agent", "Agent A", "--purpose", "work", "--format", "json"}
+	args := []string{"acquire", "--workspace", dir, "--worker-id", "worker-a", "--session-id", "session-a", "--agent", "Agent A", "--purpose", "work", "--format", "json"}
 	token := decodePlanToken(t, runCLI(t, args, 5))
 	runCLI(t, append(args, "--approve", token), 0)
-	raw := runCLI(t, []string{"resume", "--workspace", dir, "--worker-id", "worker-a", "--format", "json"}, 0)
+	raw := runCLI(t, []string{"resume", "--workspace", dir, "--worker-id", "worker-a", "--session-id", "session-a", "--generation", "1", "--format", "json"}, 0)
 	if !bytes.Contains(raw, []byte("OWNED_BY_CALLER")) {
 		t.Fatalf("output=%s", raw)
 	}
@@ -85,7 +85,7 @@ func TestAcquireCommandPreviewAndApply(t *testing.T) {
 
 func TestRecoverPreviewIncludesReviewableDocumentsAndMetadata(t *testing.T) {
 	dir := initializedCLIWorkspace(t)
-	args := []string{"acquire", "--workspace", dir, "--worker-id", "worker-a", "--agent", "Agent A", "--purpose", "work", "--format", "json"}
+	args := []string{"acquire", "--workspace", dir, "--worker-id", "worker-a", "--session-id", "session-a", "--agent", "Agent A", "--purpose", "work", "--format", "json"}
 	token := decodePlanToken(t, runCLI(t, args, 5))
 	runCLI(t, append(args, "--approve", token), 0)
 	raw := runCLI(t, []string{"recover", "--workspace", dir, "--controller-id", "human-1", "--reason", "confirmed crash", "--format", "json"}, 5)

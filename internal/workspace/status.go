@@ -160,7 +160,7 @@ func diagnose(root Root) StatusReport {
 		return finding(CodeInvalidOwnership, "error", err.Error(), "Repair ACTIVE_WORKER.md before any substantive write.")
 	}
 	if ownership.Status == core.Active {
-		return finding(CodeActiveOwner, "warning", fmt.Sprintf("Worker %s is ACTIVE via %s.", ownership.WorkerID, ownership.Agent), "Remain read-only unless this worker owns the claim.")
+		return finding(CodeActiveOwner, "warning", fmt.Sprintf("Worker %s Session %s generation %d is ACTIVE via %s.", ownership.WorkerID, ownership.SessionID, ownership.Generation, ownership.Agent), "Remain read-only unless this exact Session owns the claim.")
 	}
 	return finding(CodeReady, "info", fmt.Sprintf("Namespace is valid and ownership is %s.", ownership.Status), "Resume workspace context before acquiring ownership.")
 }

@@ -14,6 +14,7 @@ import (
 type Context struct {
 	Manifest    core.Manifest
 	Inputs      []plan.Input
+	Files       map[string][]byte
 	GeneratedAt time.Time
 }
 

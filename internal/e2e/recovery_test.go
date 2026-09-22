@@ -12,7 +12,7 @@ func TestStaleRecoveryRequiresExactOneTimeApproval(t *testing.T) {
 	dir := t.TempDir()
 	init := runInit(t, dir, "")
 	runInit(t, dir, init.PlanID)
-	previewApply(t, []string{"acquire", "--workspace", dir, "--worker-id", "worker-a", "--agent", "Agent A", "--purpose", "work", "--format", "json"})
+	previewApply(t, []string{"acquire", "--workspace", dir, "--worker-id", "worker-a", "--session-id", "session-a", "--agent", "Agent A", "--purpose", "work", "--format", "json"})
 	args := []string{"recover", "--workspace", dir, "--controller-id", "human-1", "--reason", "confirmed crash", "--format", "json"}
 	preview := lifecycleCommand(t, args, 5)
 	token := preview["planID"].(string)
@@ -21,7 +21,7 @@ func TestStaleRecoveryRequiresExactOneTimeApproval(t *testing.T) {
 	if code := cli.Run(append(args, "--approve", token), &out, &err); code == 0 {
 		t.Fatal("replayed recovery")
 	}
-	previewApply(t, []string{"acquire", "--workspace", dir, "--worker-id", "worker-b", "--agent", "Agent B", "--purpose", "continue", "--format", "json"})
+	previewApply(t, []string{"acquire", "--workspace", dir, "--worker-id", "worker-b", "--session-id", "session-b", "--agent", "Agent B", "--purpose", "continue", "--format", "json"})
 	if _, err := filepath.Glob(filepath.Join(dir, ".uawp", "checkpoints", "*.md")); err != nil {
 		t.Fatal(err)
 	}

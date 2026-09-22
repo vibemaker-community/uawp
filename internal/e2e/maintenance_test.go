@@ -17,6 +17,10 @@ func TestMaintenanceUpgradeRepairDetachAndPurge(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".uawp", "manifest.json"), manifest, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	legacy := "# UAWP Active Worker\n\n- Status: RELEASED\n- Worker ID: uawp-bootstrap\n- Agent: UAWP\n- Acquired At: 2026-09-21T10:00:00+08:00\n- Released At: 2026-09-21T10:00:00+08:00\n- Purpose: Initialize UAWP workspace state\n"
+	if err := os.WriteFile(filepath.Join(dir, ".uawp", "ACTIVE_WORKER.md"), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	previewApplyMaintenance(t, "upgrade", "--workspace", dir, "--format", "json")
 	if err := os.Remove(filepath.Join(dir, ".uawp", "INSTRUCTIONS.md")); err != nil {
 		t.Fatal(err)

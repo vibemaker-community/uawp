@@ -1,7 +1,6 @@
 package migration
 
 import (
-	"bytes"
 	"testing"
 	"time"
 
@@ -9,7 +8,7 @@ import (
 	"github.com/uawp/uawp/internal/plan"
 )
 
-func TestV1_0ToV1_1PlansDirectoriesAndManifestLast(t *testing.T) {
+func TestV1_0ToV1_1PlansDirectoriesOnly(t *testing.T) {
 	before, err := core.EncodeManifest(core.Manifest{Protocol: core.ProtocolName, StateVersion: "1.0.0"})
 	if err != nil {
 		t.Fatal(err)
@@ -23,12 +22,13 @@ func TestV1_0ToV1_1PlansDirectoriesAndManifestLast(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if step.From() != "1.0.0" || step.To() != "1.1.0" || len(changes) != 3 {
+	if step.From() != "1.0.0" || step.To() != "1.1.0" || len(changes) != 2 {
 		t.Fatalf("step=%s->%s changes=%#v", step.From(), step.To(), changes)
 	}
-	last := changes[len(changes)-1]
-	if last.Path != ".uawp/manifest.json" || last.Kind != plan.UpdateFile || !bytes.Contains(last.Content(), []byte(`"stateVersion": "1.1.0"`)) {
-		t.Fatalf("last change = %#v content=%s", last, last.Content())
+	for _, change := range changes {
+		if change.Kind != plan.CreateDir {
+			t.Fatalf("migration step published non-directory change: %#v", change)
+		}
 	}
 }
 
@@ -43,7 +43,7 @@ func TestV1_0ToV1_1PreservesIntegrationsAndExistingRecoveryDirectory(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(changes) != 2 || bytes.Count(changes[1].Content(), []byte(`"codex"`)) != 1 {
-		t.Fatalf("changes=%#v manifest=%s", changes, changes[len(changes)-1].Content())
+	if len(changes) != 1 || changes[0].Path != ".uawp/migrations" {
+		t.Fatalf("changes=%#v", changes)
 	}
 }

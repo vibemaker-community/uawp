@@ -10,8 +10,9 @@ type RecoveryRequest struct {
 	At                   time.Time
 }
 type RecoveryAudit struct {
-	ControllerID, Reason, OldWorkerID, OldAgent string
-	OldAcquiredAt, RecoveredAt                  time.Time
+	ControllerID, Reason, OldWorkerID, OldSessionID, OldAgent string
+	OldGeneration                                             uint64
+	OldAcquiredAt, RecoveredAt                                time.Time
 }
 
 func RecoverStaleOwnership(current Ownership, request RecoveryRequest) (Ownership, RecoveryAudit, error) {
@@ -29,6 +30,6 @@ func RecoverStaleOwnership(current Ownership, request RecoveryRequest) (Ownershi
 	if err := ValidateOwnership(next); err != nil {
 		return Ownership{}, RecoveryAudit{}, err
 	}
-	audit := RecoveryAudit{ControllerID: controller, Reason: reason, OldWorkerID: current.WorkerID, OldAgent: current.Agent, OldAcquiredAt: current.AcquiredAt, RecoveredAt: request.At}
+	audit := RecoveryAudit{ControllerID: controller, Reason: reason, OldWorkerID: current.WorkerID, OldSessionID: current.SessionID, OldGeneration: current.Generation, OldAgent: current.Agent, OldAcquiredAt: current.AcquiredAt, RecoveredAt: request.At}
 	return next, audit, nil
 }

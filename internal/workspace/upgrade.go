@@ -43,13 +43,6 @@ func PlanUpgradeAt(root Root, facts adapter.RuntimeFacts, at time.Time) (plan.Pl
 	if _, statErr := os.Lstat(filepath.Join(root.Path(), ".uawp", "RECOVERY.json")); statErr == nil || !os.IsNotExist(statErr) {
 		return plan.Plan{}, report, fmt.Errorf("workspace recovery must be resolved before upgrade")
 	}
-	ownership, err := readOwnership(filepath.Join(root.Path(), ".uawp", "ACTIVE_WORKER.md"))
-	if err != nil {
-		return plan.Plan{}, report, err
-	}
-	if ownership.Status != core.Released {
-		return plan.Plan{}, report, fmt.Errorf("upgrade requires RELEASED ownership")
-	}
 	ids, err := ConfiguredAdapterIDs(root)
 	if err != nil {
 		return plan.Plan{}, report, err
@@ -95,7 +88,7 @@ func PlanUpgradeAt(root Root, facts adapter.RuntimeFacts, at time.Time) (plan.Pl
 		inputs = append(inputs, nativeInputs...)
 	}
 	inputs = uniqueUpgradeInputs(inputs)
-	registry, err := migration.NewRegistry([]migration.Step{migration.V1_0ToV1_1{}})
+	registry, err := migration.NewRegistry([]migration.Step{migration.V1_0ToV1_1{}, migration.V1_1ToV1_2{}})
 	if err != nil {
 		return plan.Plan{}, report, err
 	}
@@ -104,7 +97,7 @@ func PlanUpgradeAt(root Root, facts adapter.RuntimeFacts, at time.Time) (plan.Pl
 		return plan.Plan{}, report, err
 	}
 	var changes []plan.Change
-	context := migration.Context{Manifest: manifest, Inputs: inputs, GeneratedAt: at}
+	context := migration.Context{Manifest: manifest, Inputs: inputs, Files: map[string][]byte{".uawp/ACTIVE_WORKER.md": append([]byte(nil), ownershipBytes...)}, GeneratedAt: at}
 	for _, step := range steps {
 		stepChanges, stepErr := step.Plan(context)
 		if stepErr != nil {
@@ -113,6 +106,13 @@ func PlanUpgradeAt(root Root, facts adapter.RuntimeFacts, at time.Time) (plan.Pl
 		changes = append(changes, stepChanges...)
 		context.Manifest.StateVersion = step.To()
 	}
+	targetManifest := manifest
+	targetManifest.StateVersion = core.CurrentStateVersion
+	targetBytes, err := core.EncodeManifest(targetManifest)
+	if err != nil {
+		return plan.Plan{}, report, err
+	}
+	changes = append(changes, plan.NewUpdateFile(".uawp/manifest.json", 0o600, plan.HashBytes(manifestBytes), targetBytes).WithSequence(100))
 	receiptName := fmt.Sprintf("%s-%s-to-%s-%s.json", at.UTC().Format("20060102T150405Z"), report.From, report.To, plan.HashBytes([]byte(report.From + "\x00" + report.To + "\x00" + at.UTC().Format(time.RFC3339Nano)))[:8])
 	receiptPath := ".uawp/migrations/" + receiptName
 	receiptTarget, err := root.ResolveUAWP(strings.TrimPrefix(receiptPath, ".uawp/"))
@@ -134,7 +134,7 @@ func VerifyUpgrade(root Root, facts adapter.RuntimeFacts) error {
 	if inventory.Namespace != NamespaceOwned || inventory.Manifest == nil || inventory.StateCompatibility != core.StateCurrent {
 		return fmt.Errorf("workspace is not at current state version")
 	}
-	if err := (migration.V1_0ToV1_1{}).Verify(migration.Context{Manifest: *inventory.Manifest}); err != nil {
+	if err := (migration.V1_1ToV1_2{}).Verify(migration.Context{Manifest: *inventory.Manifest}); err != nil {
 		return err
 	}
 	ids, err := ConfiguredAdapterIDs(root)

@@ -39,7 +39,8 @@ func TestDecodeManifest(t *testing.T) {
 func TestManifestCompatibilityIsSeparateFromStructure(t *testing.T) {
 	for version, want := range map[string]StateCompatibility{
 		"1.0.0":  StateUpgradeRequired,
-		"1.1.0":  StateCurrent,
+		"1.1.0":  StateUpgradeRequired,
+		"1.2.0":  StateCurrent,
 		"1.99.0": StateUnsupported,
 		"2.0.0":  StateFutureMajor,
 	} {

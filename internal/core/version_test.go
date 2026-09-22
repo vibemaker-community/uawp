@@ -4,7 +4,8 @@ import "testing"
 
 func TestClassifyStateVersion(t *testing.T) {
 	tests := map[string]StateCompatibility{
-		"1.1.0":  StateCurrent,
+		"1.2.0":  StateCurrent,
+		"1.1.0":  StateUpgradeRequired,
 		"1.0.0":  StateUpgradeRequired,
 		"1.0.1":  StateUnsupported,
 		"1.99.0": StateUnsupported,
