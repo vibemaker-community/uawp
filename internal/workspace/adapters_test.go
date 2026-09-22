@@ -381,3 +381,43 @@ func TestConditionalClaudeRemovalRemovesAllOwnedImportsAfterUserEdit(t *testing.
 		t.Fatalf("CLAUDE.md=%q err=%v", content, err)
 	}
 }
+
+func TestLegacyConditionalClaudeRemovalInfersOwnedPreservationImport(t *testing.T) {
+	r := adapterRoot(t)
+	mustWrite(t, filepath.Join(r.Path(), "AGENTS.md"), "# Existing agent rules\n")
+	facts := adapter.RuntimeFacts{Options: map[string]map[string]string{"claude-code": {"directAgentsSupport": "unknown"}}}
+	p, _, err := PlanAdapterAddAt(r, "claude-code", facts, []string{"CLAUDE_CREATION_CHANGES_SELECTION"}, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = Apply(r, p, ApplyOptions{ApprovedPlanID: p.ID}); err != nil {
+		t.Fatal(err)
+	}
+	manifest, _, err := readAdapterManifest(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest.Integrations[0].InsertedImports = nil
+	legacy, err := core.EncodeManifest(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(r.Path(), ".uawp", "manifest.json"), legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(r.Path(), "CLAUDE.md")
+	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	_, _ = f.WriteString("\n# User Claude rule\nkeep\n")
+	_ = f.Close()
+	remove, err := PlanAdapterRemoveAt(r, "claude-code", adapter.RuntimeFacts{}, time.Unix(2, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = Apply(r, remove, ApplyOptions{ApprovedPlanID: remove.ID}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil || !bytes.Contains(content, []byte("# User Claude rule\nkeep")) || bytes.Contains(content, []byte("@AGENTS.md")) || bytes.Contains(content, []byte("@.uawp/INSTRUCTIONS.md")) {
+		t.Fatalf("legacy CLAUDE.md=%q err=%v", content, err)
+	}
+}

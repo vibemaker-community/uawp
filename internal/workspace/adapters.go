@@ -376,10 +376,7 @@ func detachConsumer(root Root, manifest *core.Manifest, index int, id string) (*
 	} else if art.Mode == core.ManagedBlock {
 		after, err = adapter.RemoveManagedBlock(before, adapter.BlockSpec{ArtifactID: art.ID, Target: art.Target, Consumers: art.Consumers, Body: adapter.BridgeBody()})
 	} else if art.Mode == core.Import && len(remaining) == 0 {
-		ownedImports := append([]string(nil), art.InsertedImports...)
-		if len(ownedImports) == 0 && art.Inserted {
-			ownedImports = []string{art.Target}
-		}
+		ownedImports := ownedImportTargets(art)
 		for _, target := range ownedImports {
 			after, _, err = adapter.RemoveImport(after, target)
 			if err != nil {
@@ -419,6 +416,21 @@ func detachConsumer(root Root, manifest *core.Manifest, index int, id string) (*
 		return &change, inputs, nil
 	}
 	return nil, inputs, nil
+}
+
+func ownedImportTargets(art core.IntegrationArtifact) []string {
+	if len(art.InsertedImports) > 0 {
+		return append([]string(nil), art.InsertedImports...)
+	}
+	if !art.Inserted {
+		return nil
+	}
+	targets := []string{art.Target}
+	legacyConditional := []byte("@AGENTS.md\n@" + art.Target)
+	if art.CreatedFile && art.Path == "CLAUDE.md" && plan.HashBytes(legacyConditional) == art.ArtifactSHA256 {
+		targets = append([]string{"AGENTS.md"}, targets...)
+	}
+	return targets
 }
 func contains(items []string, want string) bool {
 	for _, v := range items {
