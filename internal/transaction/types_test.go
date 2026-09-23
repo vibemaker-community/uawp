@@ -10,7 +10,7 @@ import (
 
 func validJournal(t *testing.T) Journal {
 	t.Helper()
-	p := plan.NewForWorkspace("sync", "/workspace", []plan.Change{
+	p := plan.NewForWorkspace("sync", t.TempDir(), []plan.Change{
 		plan.NewUpdateFile(".uawp/CONTEXT.md", 0o600, plan.HashBytes([]byte("before")), []byte("after")),
 	})
 	return Journal{

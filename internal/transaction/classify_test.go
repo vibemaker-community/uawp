@@ -8,7 +8,7 @@ import (
 
 func classificationBundle(t *testing.T) Bundle {
 	t.Helper()
-	p := plan.NewForWorkspace("multi", "/workspace", []plan.Change{
+	p := plan.NewForWorkspace("multi", t.TempDir(), []plan.Change{
 		plan.NewUpdateFile(".uawp/CONTEXT.md", 0o600, plan.HashBytes([]byte("before-context")), []byte("after-context")).WithSequence(10),
 		plan.NewUpdateFile(".uawp/DECISIONS.md", 0o640, plan.HashBytes([]byte("before-decisions")), []byte("after-decisions")).WithSequence(20),
 	})

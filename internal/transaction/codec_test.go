@@ -63,7 +63,7 @@ func TestPointerReceiptAndPlanCodecsRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p := plan.NewForWorkspace("create", "/workspace", []plan.Change{plan.NewFile(".uawp/file.md", 0o600, plan.MissingSHA256, []byte("payload"))})
+	p := plan.NewForWorkspace("create", t.TempDir(), []plan.Change{plan.NewFile(".uawp/file.md", 0o600, plan.MissingSHA256, []byte("payload"))})
 	rawPlan, err := EncodePlan(p.Persisted())
 	if err != nil {
 		t.Fatal(err)
