@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uawp/uawp/internal/plan"
+	"github.com/vibemaker-community/uawp/internal/plan"
 )
 
 type ExportEntry struct {

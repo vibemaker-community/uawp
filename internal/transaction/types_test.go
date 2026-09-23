@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/uawp/uawp/internal/plan"
+	"github.com/vibemaker-community/uawp/internal/plan"
 )
 
 func validJournal(t *testing.T) Journal {

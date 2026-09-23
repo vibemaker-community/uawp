@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/uawp/uawp/internal/cli"
+	"github.com/vibemaker-community/uawp/internal/cli"
 )
 
 func main() {

@@ -3,7 +3,7 @@ package transaction
 import (
 	"testing"
 
-	"github.com/uawp/uawp/internal/plan"
+	"github.com/vibemaker-community/uawp/internal/plan"
 )
 
 func classificationBundle(t *testing.T) Bundle {

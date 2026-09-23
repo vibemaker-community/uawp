@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/uawp/uawp/internal/core"
-	"github.com/uawp/uawp/internal/identity"
+	"github.com/vibemaker-community/uawp/internal/core"
+	"github.com/vibemaker-community/uawp/internal/identity"
 )
 
 func initializedCLIWorkspace(t *testing.T) string {

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uawp/uawp/internal/plan"
-	"github.com/uawp/uawp/internal/transaction"
+	"github.com/vibemaker-community/uawp/internal/plan"
+	"github.com/vibemaker-community/uawp/internal/transaction"
 )
 
 type ApplyOptions struct {

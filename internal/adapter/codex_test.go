@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/uawp/uawp/internal/core"
+	"github.com/vibemaker-community/uawp/internal/core"
 )
 
 func codexSnapshot(files map[string]string) Snapshot {

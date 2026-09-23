@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/uawp/uawp/internal/adapter"
+	"github.com/vibemaker-community/uawp/internal/adapter"
 )
 
 func TestPurgeRequiresExternalExportAndRemovesNamespace(t *testing.T) {

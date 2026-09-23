@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/uawp/uawp/internal/core"
+	"github.com/vibemaker-community/uawp/internal/core"
 )
 
 func TestDiscoverClassifiesNamespace(t *testing.T) {

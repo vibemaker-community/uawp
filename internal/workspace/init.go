@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uawp/uawp/internal/core"
-	"github.com/uawp/uawp/internal/plan"
-	state "github.com/uawp/uawp/templates/state"
+	"github.com/vibemaker-community/uawp/internal/core"
+	"github.com/vibemaker-community/uawp/internal/plan"
+	state "github.com/vibemaker-community/uawp/templates/state"
 )
 
 func PlanInit(root Root) (plan.Plan, error) {

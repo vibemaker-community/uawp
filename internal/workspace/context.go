@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/uawp/uawp/internal/core"
-	"github.com/uawp/uawp/internal/plan"
+	"github.com/vibemaker-community/uawp/internal/core"
+	"github.com/vibemaker-community/uawp/internal/plan"
 )
 
 const maxContextBytes = 1 << 20

@@ -3,7 +3,7 @@ package core
 import (
 	"fmt"
 
-	promptassets "github.com/uawp/uawp/prompts"
+	promptassets "github.com/vibemaker-community/uawp/prompts"
 )
 
 type PromptName string

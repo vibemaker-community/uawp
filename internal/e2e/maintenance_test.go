@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/uawp/uawp/internal/cli"
-	"github.com/uawp/uawp/internal/core"
+	"github.com/vibemaker-community/uawp/internal/cli"
+	"github.com/vibemaker-community/uawp/internal/core"
 )
 
 func TestMaintenanceUpgradeRepairDetachAndPurge(t *testing.T) {

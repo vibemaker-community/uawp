@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/uawp/uawp/internal/plan"
+	"github.com/vibemaker-community/uawp/internal/plan"
 )
 
 func TestJournalCodecStrictRoundTrip(t *testing.T) {

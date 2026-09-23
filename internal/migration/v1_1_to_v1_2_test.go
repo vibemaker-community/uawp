@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/uawp/uawp/internal/core"
-	"github.com/uawp/uawp/internal/plan"
+	"github.com/vibemaker-community/uawp/internal/core"
+	"github.com/vibemaker-community/uawp/internal/plan"
 )
 
 const legacyReleasedOwnership = "# UAWP Active Worker\n\n- Status: RELEASED\n- Worker ID: worker-a\n- Agent: Agent A\n- Acquired At: 2026-09-21T10:00:00+08:00\n- Released At: 2026-09-21T11:00:00+08:00\n- Purpose: completed\n"

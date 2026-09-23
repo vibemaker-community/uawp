@@ -3,7 +3,7 @@ package transaction
 import (
 	"fmt"
 
-	"github.com/uawp/uawp/internal/plan"
+	"github.com/vibemaker-community/uawp/internal/plan"
 )
 
 type Classification string

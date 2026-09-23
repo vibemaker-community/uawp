@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/uawp/uawp/internal/core"
+	"github.com/vibemaker-community/uawp/internal/core"
 )
 
 func activeFixture(t *testing.T) (Root, time.Time) {

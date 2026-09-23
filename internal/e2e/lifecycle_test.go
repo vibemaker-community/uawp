@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/uawp/uawp/internal/cli"
+	"github.com/vibemaker-community/uawp/internal/cli"
 )
 
 func lifecycleCommand(t *testing.T, args []string, want int) map[string]any {

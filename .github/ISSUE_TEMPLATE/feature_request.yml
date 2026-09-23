@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose a scoped improvement to UAWP
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the user problem without private project data.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety and compatibility impact
+      description: Address non-destructive behavior, `.uawp/` ownership, adapters, and upgrades.
+    validations:
+      required: true
+  - type: textarea
+    id: provider_docs
+    attributes:
+      label: Official provider documentation
+      description: Required when the proposal changes an Agent adapter.

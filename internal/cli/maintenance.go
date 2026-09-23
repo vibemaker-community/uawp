@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/uawp/uawp/internal/adapter"
-	"github.com/uawp/uawp/internal/plan"
-	"github.com/uawp/uawp/internal/workspace"
+	"github.com/vibemaker-community/uawp/internal/adapter"
+	"github.com/vibemaker-community/uawp/internal/plan"
+	"github.com/vibemaker-community/uawp/internal/workspace"
 )
 
 type maintenanceFlags struct {

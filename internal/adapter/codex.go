@@ -4,7 +4,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/uawp/uawp/internal/core"
+	"github.com/vibemaker-community/uawp/internal/core"
 )
 
 type codexAdapter struct{}

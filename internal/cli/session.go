@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/uawp/uawp/internal/identity"
+	"github.com/vibemaker-community/uawp/internal/identity"
 )
 
 type sessionOutput struct {

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/uawp/uawp/internal/workspace"
+	"github.com/vibemaker-community/uawp/internal/workspace"
 )
 
 func TestInterruptedInitIsDiagnosedForTransactionRecovery(t *testing.T) {

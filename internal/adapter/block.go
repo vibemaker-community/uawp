@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/uawp/uawp/internal/plan"
+	"github.com/vibemaker-community/uawp/internal/plan"
 )
 
 type BlockSpec struct {

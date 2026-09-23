@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/uawp/uawp/internal/cli"
+	"github.com/vibemaker-community/uawp/internal/cli"
 )
 
 func TestStaleRecoveryRequiresExactOneTimeApproval(t *testing.T) {

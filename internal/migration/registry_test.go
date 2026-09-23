@@ -3,7 +3,7 @@ package migration
 import (
 	"testing"
 
-	"github.com/uawp/uawp/internal/plan"
+	"github.com/vibemaker-community/uawp/internal/plan"
 )
 
 type testStep struct{ from, to string }

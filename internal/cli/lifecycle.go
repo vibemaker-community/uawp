@@ -13,10 +13,10 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/uawp/uawp/internal/core"
-	"github.com/uawp/uawp/internal/identity"
-	"github.com/uawp/uawp/internal/plan"
-	"github.com/uawp/uawp/internal/workspace"
+	"github.com/vibemaker-community/uawp/internal/core"
+	"github.com/vibemaker-community/uawp/internal/identity"
+	"github.com/vibemaker-community/uawp/internal/plan"
+	"github.com/vibemaker-community/uawp/internal/workspace"
 )
 
 type lifecycleFlags struct {

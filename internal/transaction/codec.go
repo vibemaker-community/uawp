@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/uawp/uawp/internal/plan"
+	"github.com/vibemaker-community/uawp/internal/plan"
 )
 
 func EncodeJournal(value Journal) ([]byte, error) {

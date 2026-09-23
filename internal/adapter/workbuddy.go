@@ -1,6 +1,6 @@
 package adapter
 
-import "github.com/uawp/uawp/internal/core"
+import "github.com/vibemaker-community/uawp/internal/core"
 
 type workBuddyAdapter struct{}
 

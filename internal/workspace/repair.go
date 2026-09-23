@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/uawp/uawp/internal/adapter"
-	"github.com/uawp/uawp/internal/core"
-	"github.com/uawp/uawp/internal/plan"
-	state "github.com/uawp/uawp/templates/state"
+	"github.com/vibemaker-community/uawp/internal/adapter"
+	"github.com/vibemaker-community/uawp/internal/core"
+	"github.com/vibemaker-community/uawp/internal/plan"
+	state "github.com/vibemaker-community/uawp/templates/state"
 )
 
 func PlanRepairAt(root Root, facts adapter.RuntimeFacts, selected []string, at time.Time) (plan.Plan, []StatusReport, error) {

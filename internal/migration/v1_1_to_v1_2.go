@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/uawp/uawp/internal/core"
-	"github.com/uawp/uawp/internal/plan"
+	"github.com/vibemaker-community/uawp/internal/core"
+	"github.com/vibemaker-community/uawp/internal/plan"
 )
 
 type V1_1ToV1_2 struct{}

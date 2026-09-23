@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/uawp/uawp/internal/plan"
+	"github.com/vibemaker-community/uawp/internal/plan"
 )
 
 func RollbackChanges(bundle Bundle, observation Observation) ([]plan.Change, error) {

@@ -8,7 +8,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/uawp/uawp/internal/identity"
+	"github.com/vibemaker-community/uawp/internal/identity"
 )
 
 type identityOutput struct {

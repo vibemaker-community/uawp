@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/uawp/uawp/internal/adapter"
-	"github.com/uawp/uawp/internal/core"
-	"github.com/uawp/uawp/internal/workspace"
+	"github.com/vibemaker-community/uawp/internal/adapter"
+	"github.com/vibemaker-community/uawp/internal/core"
+	"github.com/vibemaker-community/uawp/internal/workspace"
 )
 
 func FuzzDecodeManifest(f *testing.F) {

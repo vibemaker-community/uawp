@@ -11,7 +11,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/uawp/uawp/internal/cli"
+	"github.com/vibemaker-community/uawp/internal/cli"
 )
 
 type fixtureManifest struct {

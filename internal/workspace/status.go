@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/uawp/uawp/internal/adapter"
-	"github.com/uawp/uawp/internal/core"
+	"github.com/vibemaker-community/uawp/internal/adapter"
+	"github.com/vibemaker-community/uawp/internal/core"
 )
 
 type FindingCode string
