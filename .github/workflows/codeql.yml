@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   analyze:
+    if: github.event.repository.private == false
     timeout-minutes: 30
     permissions:
       contents: read
@@ -25,4 +26,3 @@ jobs:
         with:
           languages: go
       - uses: github/codeql-action/analyze@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4
-

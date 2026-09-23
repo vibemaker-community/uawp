@@ -69,6 +69,17 @@ func TestSecurityWorkflowsUsePinnedAnalyzers(t *testing.T) {
 	}
 }
 
+func TestCodeQLSkipsUnsupportedPrivateRepositories(t *testing.T) {
+	root := repositoryRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "codeql.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "if: github.event.repository.private == false") {
+		t.Fatal("CodeQL must skip private repositories where free code scanning is unavailable")
+	}
+}
+
 func TestWritePermissionBoundary(t *testing.T) {
 	for _, permission := range []string{"contents: write", "id-token: write", "attestations: write"} {
 		t.Run(permission, func(t *testing.T) {

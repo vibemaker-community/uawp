@@ -21,7 +21,8 @@ func TestPowerShellInstallerParses(t *testing.T) {
 		return
 	}
 	root := filepath.Clean(filepath.Join("..", ".."))
-	command := exec.Command(pwsh, "-NoProfile", "-NonInteractive", "-Command", "$errors=$null; [System.Management.Automation.Language.Parser]::ParseFile($args[0],[ref]$null,[ref]$errors) > $null; if($errors.Count){exit 1}", filepath.Join(root, "install", "install.ps1"))
+	command := exec.Command(pwsh, "-NoProfile", "-NonInteractive", "-Command", "$tokens=$null; $errors=$null; [System.Management.Automation.Language.Parser]::ParseFile($env:UAWP_PS_PARSE_FILE,[ref]$tokens,[ref]$errors) > $null; if($errors.Count){$errors | ForEach-Object { Write-Error $_.Message }; exit 1}")
+	command.Env = append(os.Environ(), "UAWP_PS_PARSE_FILE="+filepath.Join(root, "install", "install.ps1"))
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("PowerShell syntax: %v %s", err, output)
 	}
