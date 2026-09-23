@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -29,6 +30,9 @@ func TestDocumentationExamples(t *testing.T) {
 
 	workspace := t.TempDir()
 	binary := filepath.Join(t.TempDir(), "uawp")
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
 	build := exec.Command("go", "build", "-o", binary, "./cmd/uawp")
 	build.Dir = repo
 	if output, err := build.CombinedOutput(); err != nil {

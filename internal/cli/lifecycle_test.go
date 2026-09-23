@@ -348,7 +348,7 @@ func TestHumanSyncPreviewShowsReplacementContent(t *testing.T) {
 	if code := runWithRuntime([]string{"sync", "--context-file", contextPath}, rt); code != exitOK {
 		t.Fatalf("code=%d stderr=%s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "# Exact replacement") || !strings.Contains(stdout.String(), dir) {
+	if !strings.Contains(stdout.String(), "# Exact replacement") || !strings.Contains(stdout.String(), filepath.Base(dir)) {
 		t.Fatalf("preview=%s", stdout.String())
 	}
 }

@@ -4,12 +4,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
 func TestSmokeRunsPackagedLifecycleAndPreservesProjectFiles(t *testing.T) {
 	root := filepath.Clean(filepath.Join("..", ".."))
 	binary := filepath.Join(t.TempDir(), "uawp")
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
 	command := exec.Command("go", "build", "-o", binary, "./cmd/uawp")
 	command.Dir = root
 	if output, err := command.CombinedOutput(); err != nil {
