@@ -80,6 +80,31 @@ func TestCodeQLSkipsUnsupportedPrivateRepositories(t *testing.T) {
 	}
 }
 
+func TestWorkflowsUseNode24SetupGoWithGoModCaching(t *testing.T) {
+	root := repositoryRoot(t)
+	files, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("workflow discovery: files=%v err=%v", files, err)
+	}
+	const setupGoV7 = "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e"
+	for _, filename := range files {
+		data, err := os.ReadFile(filename)
+		if err != nil {
+			t.Errorf("%s: %v", filepath.Base(filename), err)
+			continue
+		}
+		text := string(data)
+		if !strings.Contains(text, "actions/setup-go@") {
+			continue
+		}
+		for _, match := range actionReference.FindAllStringSubmatch(text, -1) {
+			if match[1] == "actions/setup-go" && match[2] != strings.TrimPrefix(setupGoV7, "actions/setup-go@") {
+				t.Errorf("%s uses stale setup-go reference %s@%s", filepath.Base(filename), match[1], match[2])
+			}
+		}
+	}
+}
+
 func TestReleaseDryRunIsManualReadOnlyAndNeverPublishes(t *testing.T) {
 	root := repositoryRoot(t)
 	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release-dry-run.yml"))
