@@ -56,13 +56,12 @@ func selectSurface(format string, inputTTY, outputTTY, nonInteractive bool) cliS
 }
 
 func runWithRuntime(args []string, rt runtime) int {
-	if len(args) == 1 && args[0] == "version" {
-		return runVersion(rt.stdout)
-	}
 	if len(args) == 0 {
 		return usage(rt.stderr)
 	}
 	switch args[0] {
+	case "version":
+		return runVersion(args[1:], rt.stdout, rt.stderr)
 	case "identity":
 		return runIdentity(args[1:], rt)
 	case "session":
@@ -96,9 +95,4 @@ func runWithRuntime(args []string, rt runtime) int {
 	default:
 		return usage(rt.stderr)
 	}
-}
-
-func runVersion(stdout io.Writer) int {
-	_, _ = io.WriteString(stdout, "uawp dev\n")
-	return exitOK
 }
