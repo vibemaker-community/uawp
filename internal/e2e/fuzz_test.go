@@ -45,11 +45,11 @@ func FuzzResolveUAWP(f *testing.F) {
 	} {
 		f.Add(seed)
 	}
+	root, err := workspace.OpenRoot(f.TempDir())
+	if err != nil {
+		f.Fatal(err)
+	}
 	f.Fuzz(func(t *testing.T, relative string) {
-		root, err := workspace.OpenRoot(t.TempDir())
-		if err != nil {
-			t.Fatal(err)
-		}
 		resolved, err := root.ResolveUAWP(relative)
 		if err != nil {
 			return
