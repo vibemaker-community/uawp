@@ -49,7 +49,7 @@ case "$base_url" in
 esac
 
 final_path="${destination%/}/uawp"
-if [ -e "$final_path" ] && [ "$force" -ne 1 ]; then
+if { [ -e "$final_path" ] || [ -L "$final_path" ]; } && [ "$force" -ne 1 ]; then
   echo "$final_path already exists; use --force to replace it" >&2
   exit 1
 fi
@@ -62,8 +62,15 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-curl -fsSL --proto '=https,http' --tlsv1.2 -o "$work_dir/$checksums" "$base_url/$checksums"
-curl -fsSL --proto '=https,http' --tlsv1.2 -o "$work_dir/$asset" "$base_url/$asset"
+download() {
+  if [ "${UAWP_INSTALL_TESTING:-}" = "1" ]; then
+    curl -fsSL --tlsv1.2 -o "$1" "$2"
+  else
+    curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 -o "$1" "$2"
+  fi
+}
+download "$work_dir/$checksums" "$base_url/$checksums"
+download "$work_dir/$asset" "$base_url/$asset"
 
 matching=$(awk -v name="$asset" '$2 == name { print $1 }' "$work_dir/$checksums")
 line_count=$(printf '%s\n' "$matching" | awk 'NF { count++ } END { print count+0 }')
@@ -92,6 +99,7 @@ fi
 expected_entries='LICENSE
 NOTICE
 README.md
+THIRD_PARTY_NOTICES.md
 TRADEMARKS.md
 release-metadata.json
 uawp'
@@ -108,11 +116,27 @@ fi
 mkdir "$work_dir/extract"
 LC_ALL=C LANG=C tar -xzf "$work_dir/$asset" -C "$work_dir/extract" uawp
 chmod 0755 "$work_dir/extract/uawp"
+version_output=$("$work_dir/extract/uawp" version --format json) || {
+  echo "downloaded uawp executable failed its version check" >&2
+  exit 1
+}
+case "$version_output" in
+  *\"version\":\"$version\"*) ;;
+  *) echo "downloaded uawp executable reports the wrong version" >&2; exit 1 ;;
+esac
 mkdir -p "$destination"
 staging_path="${destination%/}/.uawp-install.$$"
 cp "$work_dir/extract/uawp" "$staging_path"
 chmod 0755 "$staging_path"
-mv -f "$staging_path" "$final_path"
+if [ "$force" -eq 1 ]; then
+  mv -f "$staging_path" "$final_path"
+else
+  if ! ln "$staging_path" "$final_path" 2>/dev/null; then
+    echo "$final_path appeared during installation; use --force to replace it" >&2
+    exit 1
+  fi
+  rm -f "$staging_path"
+fi
 staging_path=""
 echo "Installed UAWP $version to $final_path"
 echo "PATH was not changed. Add the destination yourself if needed."

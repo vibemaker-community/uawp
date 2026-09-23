@@ -47,9 +47,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh attestation verify dist/release/*.tar.gz --repo "$GITHUB_REPOSITORY"
-          gh attestation verify dist/release/*.zip --repo "$GITHUB_REPOSITORY"
-          gh attestation verify dist/release/*_checksums.txt --repo "$GITHUB_REPOSITORY"
+          for asset in dist/release/*.tar.gz dist/release/*.zip dist/release/*_checksums.txt; do
+            gh attestation verify "$asset" --repo "$GITHUB_REPOSITORY"
+          done
       - name: Run verifyrelease against public assets
         shell: bash
         env:
@@ -58,7 +58,17 @@ jobs:
           version="${RELEASE_TAG#v}"
           commit="$(git rev-parse HEAD)"
           go run ./scripts/verifyrelease.go --dist dist/release --version "$version" --commit "$commit"
-          mkdir -p evidence
+          mkdir -p extracted workspace evidence
+          if [ "${{ matrix.target }}" = "windows-amd64" ]; then
+            unzip -q "dist/release/uawp_${version}_windows_amd64.zip" uawp.exe -d extracted
+            binary="extracted/uawp.exe"
+          else
+            archive_target="$(printf '%s' '${{ matrix.target }}' | tr '-' '_')"
+            tar -xzf "dist/release/uawp_${version}_${archive_target}.tar.gz" -C extracted uawp
+            binary="extracted/uawp"
+          fi
+          printf 'preserve this public office file\n' > workspace/notes.txt
+          go run ./cmd/releasesmoke --binary "$binary" --workspace workspace
           printf '{"tag":"%s","commit":"%s","target":"%s","status":"passed"}\n' "$RELEASE_TAG" "$commit" "${{ matrix.target }}" > "evidence/public-${{ matrix.target }}.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

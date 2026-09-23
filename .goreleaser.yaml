@@ -50,6 +50,10 @@ archives:
         info:
           mode: 0644
           mtime: "{{ .Env.UAWP_BUILT_AT }}"
+      - src: THIRD_PARTY_NOTICES.md
+        info:
+          mode: 0644
+          mtime: "{{ .Env.UAWP_BUILT_AT }}"
       - src: TRADEMARKS.md
         info:
           mode: 0644

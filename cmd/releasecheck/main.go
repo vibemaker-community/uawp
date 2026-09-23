@@ -22,9 +22,11 @@ type request struct {
 	Tag               string
 	Version           string
 	Commit            string
+	MainCommit        string
 	Changelog         string
 	ExistingTagCommit string
 	EvidenceDir       string
+	CandidateTag      string
 }
 
 type evidence struct {
@@ -39,8 +41,10 @@ func main() {
 	tag := flag.String("tag", "", "immutable release tag")
 	version := flag.String("version", "", "build version without leading v")
 	commit := flag.String("commit", "", "full release commit SHA")
+	mainCommit := flag.String("main-commit", "", "full commit SHA currently at origin/main")
 	changelogPath := flag.String("changelog", "CHANGELOG.md", "changelog path")
 	evidenceDir := flag.String("evidence-dir", "", "native release evidence directory")
+	candidateTag := flag.String("candidate-tag", "", "verified release candidate tag required for final promotion")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		exitError(errors.New("unexpected positional arguments"))
@@ -58,9 +62,11 @@ func main() {
 		Tag:               *tag,
 		Version:           *version,
 		Commit:            *commit,
+		MainCommit:        *mainCommit,
 		Changelog:         string(changelog),
 		ExistingTagCommit: existing,
 		EvidenceDir:       *evidenceDir,
+		CandidateTag:      *candidateTag,
 	})
 	if err != nil {
 		exitError(err)
@@ -82,6 +88,12 @@ func validate(req request) error {
 	if !strings.Contains(req.Version, "-rc.") && !finalChangelogHeading(req.Changelog, req.Version) {
 		return fmt.Errorf("changelog still identifies %s as a candidate or unreleased", req.Tag)
 	}
+	if !strings.Contains(req.Version, "-rc.") {
+		candidatePattern := regexp.MustCompile(`^v` + regexp.QuoteMeta(req.Version) + `-rc\.[1-9][0-9]*$`)
+		if !candidatePattern.MatchString(req.CandidateTag) {
+			return fmt.Errorf("final release requires a verified matching release candidate tag")
+		}
+	}
 	switch req.Mode {
 	case "prepare":
 		if req.ExistingTagCommit != "" {
@@ -93,6 +105,9 @@ func validate(req request) error {
 		}
 		if req.ExistingTagCommit != req.Commit {
 			return fmt.Errorf("tag %s does not point to release commit %s", req.Tag, req.Commit)
+		}
+		if req.Mode == "tagged" && req.MainCommit != req.Commit {
+			return fmt.Errorf("release commit must equal the reviewed origin/main commit")
 		}
 		if req.Mode == "publish" {
 			if err := verifyEvidence(req); err != nil {

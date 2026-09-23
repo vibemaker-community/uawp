@@ -20,7 +20,8 @@ func TestUnixInstallerValidatesBeforeAtomicInstall(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix installer")
 	}
-	archive := unixArchive(t, []tarEntry{{"uawp", tar.TypeReg, []byte("#!/bin/sh\necho installed\n")}})
+	binary := releaseBinary(t)
+	archive := unixArchive(t, []tarEntry{{"uawp", tar.TypeReg, binary}})
 	server := releaseServer(t, "1.0.0", archive, fmt.Sprintf("%x", sha256.Sum256(archive)))
 	dest := t.TempDir()
 
@@ -33,8 +34,8 @@ func TestUnixInstallerValidatesBeforeAtomicInstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(installed) != "#!/bin/sh\necho installed\n" {
-		t.Fatalf("installed content = %q", installed)
+	if !bytes.Equal(installed, binary) {
+		t.Fatal("installed binary differs from verified release binary")
 	}
 	if !strings.Contains(result.output, filepath.Join(dest, "uawp")) {
 		t.Fatalf("output does not name installation path: %s", result.output)
@@ -84,7 +85,8 @@ func TestUnixInstallerRequiresExplicitForce(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix installer")
 	}
-	archive := unixArchive(t, []tarEntry{{"uawp", tar.TypeReg, []byte("new")}})
+	binary := releaseBinary(t)
+	archive := unixArchive(t, []tarEntry{{"uawp", tar.TypeReg, binary}})
 	server := releaseServer(t, "1.0.0", archive, fmt.Sprintf("%x", sha256.Sum256(archive)))
 	dest := t.TempDir()
 	path := filepath.Join(dest, "uawp")
@@ -98,8 +100,46 @@ func TestUnixInstallerRequiresExplicitForce(t *testing.T) {
 		t.Fatalf("forced install failed: %v %s", result.err, result.output)
 	}
 	got, _ := os.ReadFile(path)
-	if string(got) != "new" {
-		t.Fatalf("forced content = %q", got)
+	if !bytes.Equal(got, binary) {
+		t.Fatal("forced content differs from verified binary")
+	}
+}
+
+func TestUnixInstallerRejectsInvalidExecutableAndPreservesExisting(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix installer")
+	}
+	archive := unixArchive(t, []tarEntry{{"uawp", tar.TypeReg, []byte("not an executable")}})
+	server := releaseServer(t, "1.0.0", archive, fmt.Sprintf("%x", sha256.Sum256(archive)))
+	dest := t.TempDir()
+	path := filepath.Join(dest, "uawp")
+	os.WriteFile(path, []byte("old"), 0o700)
+	if result := runUnixInstaller(t, server.URL, dest, "--force"); result.err == nil {
+		t.Fatalf("invalid executable installed: %s", result.output)
+	}
+	got, _ := os.ReadFile(path)
+	if string(got) != "old" {
+		t.Fatalf("existing binary changed to %q", got)
+	}
+}
+
+func TestUnixInstallerRaceDoesNotOverwriteWithoutForce(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix installer")
+	}
+	binary := releaseBinary(t)
+	archive := unixArchive(t, []tarEntry{{"uawp", tar.TypeReg, binary}})
+	dest := t.TempDir()
+	path := filepath.Join(dest, "uawp")
+	server := releaseServerWithHook(t, "1.0.0", archive, fmt.Sprintf("%x", sha256.Sum256(archive)), func() {
+		_ = os.WriteFile(path, []byte("racing install"), 0o700)
+	})
+	if result := runUnixInstaller(t, server.URL, dest); result.err == nil {
+		t.Fatal("racing installation overwritten without --force")
+	}
+	got, _ := os.ReadFile(path)
+	if string(got) != "racing install" {
+		t.Fatalf("racing binary changed to %q", got)
 	}
 }
 
@@ -156,11 +196,19 @@ func runUnixInstaller(t *testing.T, baseURL, dest string, extra ...string) insta
 }
 
 func releaseServer(t *testing.T, version string, archive []byte, checksum string) *httptest.Server {
+	return releaseServerWithHook(t, version, archive, checksum, nil)
+}
+
+func releaseServerWithHook(t *testing.T, version string, archive []byte, checksum string, hook func()) *httptest.Server {
 	t.Helper()
 	asset := fmt.Sprintf("uawp_%s_%s_%s.tar.gz", version, runtime.GOOS, runtime.GOARCH)
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch filepath.Base(request.URL.Path) {
 		case asset:
+			if hook != nil {
+				hook()
+				hook = nil
+			}
 			_, _ = writer.Write(archive)
 		case "uawp_" + version + "_checksums.txt":
 			if checksum == "" {
@@ -176,6 +224,26 @@ func releaseServer(t *testing.T, version string, archive []byte, checksum string
 	return server
 }
 
+func releaseBinary(t *testing.T) []byte {
+	t.Helper()
+	root := filepath.Clean(filepath.Join("..", ".."))
+	path := filepath.Join(t.TempDir(), "uawp")
+	if runtime.GOOS == "windows" {
+		path += ".exe"
+	}
+	ldflags := "-X github.com/vibemaker-community/uawp/internal/buildinfo.Version=1.0.0 -X github.com/vibemaker-community/uawp/internal/buildinfo.Commit=0123456789abcdef0123456789abcdef01234567 -X github.com/vibemaker-community/uawp/internal/buildinfo.BuiltAt=2026-09-23T10:54:23Z"
+	command := exec.Command("go", "build", "-trimpath", "-ldflags", ldflags, "-o", path, "./cmd/uawp")
+	command.Dir = root
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("build release binary: %v\n%s", err, output)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
 type tarEntry struct {
 	name     string
 	typeflag byte
@@ -185,7 +253,7 @@ type tarEntry struct {
 func unixArchive(t *testing.T, custom []tarEntry) []byte {
 	t.Helper()
 	entries := append([]tarEntry{}, custom...)
-	for _, name := range []string{"LICENSE", "NOTICE", "README.md", "TRADEMARKS.md", "release-metadata.json"} {
+	for _, name := range []string{"LICENSE", "NOTICE", "README.md", "THIRD_PARTY_NOTICES.md", "TRADEMARKS.md", "release-metadata.json"} {
 		entries = append(entries, tarEntry{name, tar.TypeReg, []byte(name)})
 	}
 	var output bytes.Buffer

@@ -17,7 +17,7 @@ failure at any row blocks the next state.
 | Aggregate evidence binding | Release `publish` runs `releasecheck --mode publish` | Validated tag/commit/target JSON records |
 | Public asset provenance | Release `publish` attestation step | GitHub artifact attestations |
 | Human publication authorization | Maintainer creates and pushes a new immutable tag | Signed-in Git actor, tag, and workflow trigger history |
-| Public download, checksum, attestation, and execution | Post-release `verify-public-assets` matrix | Five `public-verification-<target>` artifacts retained 30 days |
+| Public download, checksum, attestation, and lifecycle execution | Release `verify-public-assets` matrix (plus redundant Post-release workflow for external publication) | Five `public-verification-<target>` artifacts retained 30 days |
 
 The public release is not complete until the last row is green. See the
 [release procedure](releasing.md), [verification guide](verify-release.md),

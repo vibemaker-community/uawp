@@ -37,7 +37,7 @@ try {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [IO.Compression.ZipFile]::OpenRead($archivePath)
     try {
-        $expectedEntries = @("LICENSE", "NOTICE", "README.md", "TRADEMARKS.md", "release-metadata.json", "uawp.exe")
+        $expectedEntries = @("LICENSE", "NOTICE", "README.md", "THIRD_PARTY_NOTICES.md", "TRADEMARKS.md", "release-metadata.json", "uawp.exe")
         $names = @($zip.Entries | ForEach-Object { $_.FullName } | Sort-Object)
         if (($names -join "`n") -ne (($expectedEntries | Sort-Object) -join "`n")) { throw "Archive contains missing, duplicate, or unsafe entries" }
         foreach ($entry in $zip.Entries) {
@@ -49,10 +49,15 @@ try {
 
     $extractDir = Join-Path $workDir "extract"
     [IO.Compression.ZipFile]::ExtractToDirectory($archivePath, $extractDir)
+    $extractedBinary = Join-Path $extractDir "uawp.exe"
+    $versionOutput = & $extractedBinary version --format json | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or $versionOutput.version -ne $Version) { throw "Downloaded uawp executable failed its version check" }
     New-Item -ItemType Directory -Force -Path $Destination | Out-Null
     $stagingPath = Join-Path $Destination (".uawp-install-" + [Guid]::NewGuid() + ".exe")
-    Copy-Item -LiteralPath (Join-Path $extractDir "uawp.exe") -Destination $stagingPath
-    if (Test-Path -LiteralPath $finalPath) {
+    Copy-Item -LiteralPath $extractedBinary -Destination $stagingPath
+    if (-not $Force) {
+        [IO.File]::Move($stagingPath, $finalPath)
+    } elseif (Test-Path -LiteralPath $finalPath) {
         $backup = Join-Path $workDir "uawp.previous.exe"
         [IO.File]::Replace($stagingPath, $finalPath, $backup)
     } else {

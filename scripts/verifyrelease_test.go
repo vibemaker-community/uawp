@@ -136,6 +136,15 @@ func TestReleaseBundleRejectsWrongBinaryNameAndMetadata(t *testing.T) {
 	})
 }
 
+func TestNativeExecutableNameUsesWindowsExtension(t *testing.T) {
+	if got := nativeExecutableName(releaseMetadata{GOOS: "windows"}); got != "uawp.exe" {
+		t.Fatalf("Windows executable name = %q", got)
+	}
+	if got := nativeExecutableName(releaseMetadata{GOOS: "linux"}); got != "uawp" {
+		t.Fatalf("Linux executable name = %q", got)
+	}
+}
+
 func validRelease(t *testing.T, version string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -165,7 +174,7 @@ func writeTar(t *testing.T, path string, target releaseMetadata, extras ...archi
 		t.Fatal(err)
 	}
 	tw := tar.NewWriter(gz)
-	entries := []archiveEntry{{Name: "uawp", Typeflag: tar.TypeReg}, {Name: "LICENSE", Typeflag: tar.TypeReg}, {Name: "NOTICE", Typeflag: tar.TypeReg}, {Name: "TRADEMARKS.md", Typeflag: tar.TypeReg}, {Name: "README.md", Typeflag: tar.TypeReg}, {Name: "release-metadata.json", Typeflag: tar.TypeReg}}
+	entries := []archiveEntry{{Name: "uawp", Typeflag: tar.TypeReg}, {Name: "LICENSE", Typeflag: tar.TypeReg}, {Name: "NOTICE", Typeflag: tar.TypeReg}, {Name: "THIRD_PARTY_NOTICES.md", Typeflag: tar.TypeReg}, {Name: "TRADEMARKS.md", Typeflag: tar.TypeReg}, {Name: "README.md", Typeflag: tar.TypeReg}, {Name: "release-metadata.json", Typeflag: tar.TypeReg}}
 	entries = append(entries, extras...)
 	metadata, _ := json.Marshal(target)
 	for _, entry := range entries {
@@ -207,7 +216,7 @@ func writeZip(t *testing.T, path string, target releaseMetadata, binary string) 
 	for _, entry := range []struct {
 		name string
 		body []byte
-	}{{binary, []byte("binary")}, {"LICENSE", []byte("license")}, {"NOTICE", []byte("notice")}, {"TRADEMARKS.md", []byte("trademark")}, {"README.md", []byte("readme")}, {"release-metadata.json", metadata}} {
+	}{{binary, []byte("binary")}, {"LICENSE", []byte("license")}, {"NOTICE", []byte("notice")}, {"THIRD_PARTY_NOTICES.md", []byte("third party")}, {"TRADEMARKS.md", []byte("trademark")}, {"README.md", []byte("readme")}, {"release-metadata.json", metadata}} {
 		writer, err := zw.Create(entry.name)
 		if err != nil {
 			t.Fatal(err)

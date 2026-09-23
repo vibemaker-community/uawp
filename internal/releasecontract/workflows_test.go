@@ -118,7 +118,7 @@ func TestReleaseWorkflowBuildsOnceAndTestsExactBundleEverywhere(t *testing.T) {
 			t.Errorf("release workflow missing native runner %s", runner)
 		}
 	}
-	for _, gate := range []string{"releasecheck", "verifyrelease", "checksums-verified.json", "gh release create"} {
+	for _, gate := range []string{"releasecheck", "--main-commit", "verifyrelease", "releasesmoke", "checksums-verified.json", "gh release create", "--prerelease", "date -u -d", "for asset in", "verify-public-assets", "needs: publish"} {
 		if !strings.Contains(text, gate) {
 			t.Errorf("release workflow missing gate %q", gate)
 		}

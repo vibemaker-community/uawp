@@ -18,7 +18,8 @@ artifacts. It does not require a paid GitHub Environment approval gate.
   architectures, both Linux architectures, and Windows x86-64.
 - Publication happens only after source tests, vulnerability checks, checksum
   verification, and every native smoke test pass.
-- A release is not considered complete until the post-release workflow has
+- A release is not considered complete until the release workflow's
+  `verify-public-assets` jobs have
   downloaded the public assets, verified their attestations and checksums, and
   executed the matching binary on all five native runners.
 
@@ -37,7 +38,8 @@ artifacts. It does not require a paid GitHub Environment approval gate.
    tag=v1.0.0-rc.1
    version=${tag#v}
    commit=$(git rev-parse HEAD)
-   go run ./cmd/releasecheck --mode prepare --tag "$tag" --version "$version" --commit "$commit"
+   candidate_tag="" # set to the verified matching RC tag for a final release
+   go run ./cmd/releasecheck --mode prepare --tag "$tag" --version "$version" --commit "$commit" --candidate-tag "$candidate_tag"
    make check
    GOPROXY=https://proxy.golang.org,direct go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
    ```
@@ -63,8 +65,10 @@ The release workflow produces one `release-bundle` transfer artifact and five
 per-platform evidence artifacts. The final publish job accepts only evidence
 whose tag, commit, target, and passed status match the immutable tag.
 
-Publishing triggers `Post-release Verification`. Inspect that workflow in
-GitHub Actions. Only a green result on all five platforms establishes that the
+Publication is followed directly by `verify-public-assets` in the same Release
+workflow, so `GITHUB_TOKEN` event-suppression cannot skip the gate. The separate
+Post-release Verification workflow is a redundant check for releases created
+outside this pipeline. Only a green result on all five platforms establishes that the
 public release is complete. A published GitHub release whose post-release
 verification is red must be treated as faulty and must not be announced as a
 successful release.
@@ -100,4 +104,4 @@ make release-snapshot GORELEASER="go run github.com/goreleaser/goreleaser/v2@v2.
 ```
 
 This checks deterministic archive structure and embedded build metadata. It is
-not a substitute for the native hosted matrix or public post-release checks.
+not a substitute for the native hosted matrix or public-release checks.

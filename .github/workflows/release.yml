@@ -8,11 +8,15 @@ on:
 
 permissions:
   contents: read
+  actions: read
+  checks: read
 
 jobs:
   build:
     timeout-minutes: 30
     runs-on: ubuntu-24.04
+    outputs:
+      candidate-tag: ${{ steps.candidate.outputs.candidate_tag }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -27,11 +31,38 @@ jobs:
         run: |
           tag="${GITHUB_REF#refs/tags/}"
           version="${tag#v}"
-          built_at="$(git show -s --format=%cI "$GITHUB_SHA")"
           commit_timestamp="$(git show -s --format=%ct "$GITHUB_SHA")"
-          printf 'RELEASE_TAG=%s\nRELEASE_VERSION=%s\nUAWP_BUILT_AT=%s\nUAWP_COMMIT_TIMESTAMP=%s\n' "$tag" "$version" "$built_at" "$commit_timestamp" >> "$GITHUB_ENV"
+          built_at="$(date -u -d "@$commit_timestamp" '+%Y-%m-%dT%H:%M:%SZ')"
+          main_commit="$(git rev-parse origin/main)"
+          printf 'RELEASE_TAG=%s\nRELEASE_VERSION=%s\nUAWP_BUILT_AT=%s\nUAWP_COMMIT_TIMESTAMP=%s\nMAIN_COMMIT=%s\n' "$tag" "$version" "$built_at" "$commit_timestamp" "$main_commit" >> "$GITHUB_ENV"
+      - name: Verify required successful main checks
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          successful="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs" --paginate --jq '.check_runs[] | select(.conclusion == "success") | .name')"
+          for required in "Native macos-15" "Native macos-15-intel" "Native ubuntu-24.04" "Native ubuntu-24.04-arm" "Native windows-2025" analyze fuzz scan; do
+            printf '%s\n' "$successful" | grep -Fx "$required" >/dev/null || { echo "required check did not pass: $required" >&2; exit 1; }
+          done
+      - name: Resolve verified candidate for final promotion
+        id: candidate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          candidate_tag=""
+          case "$RELEASE_TAG" in
+            *-rc.*) ;;
+            *)
+              candidate_tag="$(gh release list --repo "$GITHUB_REPOSITORY" --json tagName,isPrerelease --jq '.[] | select(.isPrerelease and (.tagName | startswith("v'"$RELEASE_VERSION"'-rc."))) | .tagName' | head -n 1)"
+              [ -n "$candidate_tag" ] || { echo "final release requires a published matching candidate" >&2; exit 1; }
+              gh run list --repo "$GITHUB_REPOSITORY" --workflow release.yml --branch "$candidate_tag" --status success --limit 1 --json conclusion --jq '.[0].conclusion' | grep -Fx success >/dev/null || { echo "candidate has no successful full release verification" >&2; exit 1; }
+              ;;
+          esac
+          printf 'CANDIDATE_TAG=%s\n' "$candidate_tag" >> "$GITHUB_ENV"
+          printf 'candidate_tag=%s\n' "$candidate_tag" >> "$GITHUB_OUTPUT"
       - name: Validate tag and repository state
-        run: go run ./cmd/releasecheck --mode tagged --tag "$RELEASE_TAG" --version "$RELEASE_VERSION" --commit "$GITHUB_SHA"
+        run: go run ./cmd/releasecheck --mode tagged --tag "$RELEASE_TAG" --version "$RELEASE_VERSION" --commit "$GITHUB_SHA" --main-commit "$MAIN_COMMIT" --candidate-tag "$CANDIDATE_TAG"
       - name: Run source, governance, and security gates
         shell: bash
         run: |
@@ -101,6 +132,20 @@ jobs:
           version="${tag#v}"
           rm -f dist/release/checksums-verified.json
           go run ./scripts/verifyrelease.go --dist dist/release --version "$version" --commit "$GITHUB_SHA"
+          mkdir -p extracted workspace
+          asset="dist/release/uawp_${version}_${{ matrix.target }}.tar.gz"
+          binary="extracted/uawp"
+          if [ "${{ matrix.target }}" = "windows-amd64" ]; then
+            asset="dist/release/uawp_${version}_windows_amd64.zip"
+            binary="extracted/uawp.exe"
+            unzip -q "$asset" uawp.exe -d extracted
+          else
+            archive_target="$(printf '%s' '${{ matrix.target }}' | tr '-' '_')"
+            asset="dist/release/uawp_${version}_${archive_target}.tar.gz"
+            tar -xzf "$asset" -C extracted uawp
+          fi
+          printf 'preserve this office file\n' > workspace/notes.txt
+          go run ./cmd/releasesmoke --binary "$binary" --workspace workspace
           mkdir -p evidence
           printf '{"tag":"%s","commit":"%s","target":"%s","status":"passed"}\n' "$tag" "$GITHUB_SHA" "${{ matrix.target }}" > "evidence/smoke-${{ matrix.target }}.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -110,14 +155,10 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  publish:
-    needs: native
+  evidence:
+    needs: [build, native]
     timeout-minutes: 15
     runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-      id-token: write
-      attestations: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -142,7 +183,21 @@ jobs:
           tag="${GITHUB_REF#refs/tags/}"
           version="${tag#v}"
           cp dist/release/checksums-verified.json evidence/
-          go run ./cmd/releasecheck --mode publish --tag "$tag" --version "$version" --commit "$GITHUB_SHA" --evidence-dir evidence
+          go run ./cmd/releasecheck --mode publish --tag "$tag" --version "$version" --commit "$GITHUB_SHA" --candidate-tag "${{ needs.build.outputs.candidate-tag }}" --evidence-dir evidence
+
+  publish:
+    needs: evidence
+    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: release-bundle
+          path: dist/release
       - name: Attest verified release assets
         uses: actions/attest-build-provenance@1e69f48acb82d1966a394da916b4c1698aa569d6 # v3
         with:
@@ -157,4 +212,76 @@ jobs:
         run: |
           tag="${GITHUB_REF#refs/tags/}"
           rm dist/release/checksums-verified.json
-          gh release create "$tag" dist/release/* --verify-tag --title "UAWP $tag" --notes-file CHANGELOG.md
+          release_flags=()
+          case "$tag" in
+            *-rc.*) release_flags+=(--prerelease --latest=false) ;;
+          esac
+          gh release create "$tag" dist/release/* --verify-tag --title "UAWP $tag" --generate-notes "${release_flags[@]}"
+
+  verify-public-assets:
+    needs: publish
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: darwin-arm64
+          - runner: macos-15-intel
+            target: darwin-amd64
+          - runner: ubuntu-24.04
+            target: linux-amd64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+          - runner: windows-2025
+            target: windows-amd64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Download public assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          mkdir -p dist/release
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir dist/release
+      - name: Verify each public attestation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for asset in dist/release/*.tar.gz dist/release/*.zip dist/release/*_checksums.txt; do
+            gh attestation verify "$asset" --repo "$GITHUB_REPOSITORY"
+          done
+      - name: Verify and execute public package
+        shell: bash
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          version="${tag#v}"
+          go run ./scripts/verifyrelease.go --dist dist/release --version "$version" --commit "$GITHUB_SHA"
+          mkdir -p extracted workspace evidence
+          if [ "${{ matrix.target }}" = "windows-amd64" ]; then
+            unzip -q "dist/release/uawp_${version}_windows_amd64.zip" uawp.exe -d extracted
+            binary="extracted/uawp.exe"
+          else
+            archive_target="$(printf '%s' '${{ matrix.target }}' | tr '-' '_')"
+            tar -xzf "dist/release/uawp_${version}_${archive_target}.tar.gz" -C extracted uawp
+            binary="extracted/uawp"
+          fi
+          printf 'preserve this public office file\n' > workspace/notes.txt
+          go run ./cmd/releasesmoke --binary "$binary" --workspace workspace
+          printf '{"tag":"%s","commit":"%s","target":"%s","status":"passed"}\n' "$tag" "$GITHUB_SHA" "${{ matrix.target }}" > "evidence/public-${{ matrix.target }}.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: public-verification-${{ matrix.target }}
+          path: evidence
+          if-no-files-found: error
+          retention-days: 30

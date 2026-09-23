@@ -20,11 +20,26 @@ func TestValidateAcceptsCandidateAndFinalTags(t *testing.T) {
 		{"final", "v1.0.0", "1.0.0", "# Changelog\n\n## 1.0.0\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			err := validate(request{Mode: "prepare", Tag: test.tag, Version: test.version, Commit: testCommit, Changelog: test.changelog})
+			req := request{Mode: "prepare", Tag: test.tag, Version: test.version, Commit: testCommit, Changelog: test.changelog}
+			if test.name == "final" {
+				req.CandidateTag = "v1.0.0-rc.2"
+			}
+			err := validate(req)
 			if err != nil {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestValidateFinalRequiresMatchingReleaseCandidate(t *testing.T) {
+	req := request{Mode: "prepare", Tag: "v1.0.0", Version: "1.0.0", Commit: testCommit, Changelog: "## 1.0.0"}
+	if err := validate(req); err == nil || !strings.Contains(err.Error(), "candidate") {
+		t.Fatalf("missing candidate error = %v", err)
+	}
+	req.CandidateTag = "v1.1.0-rc.1"
+	if err := validate(req); err == nil || !strings.Contains(err.Error(), "candidate") {
+		t.Fatalf("wrong candidate error = %v", err)
 	}
 }
 
@@ -84,13 +99,20 @@ func TestValidatePublishAcceptsCompleteEvidence(t *testing.T) {
 }
 
 func TestValidateTaggedModeRequiresTagAtReleaseCommitWithoutEvidence(t *testing.T) {
-	req := request{Mode: "tagged", Tag: "v1.0.0-rc.1", Version: "1.0.0-rc.1", Commit: testCommit, ExistingTagCommit: testCommit, Changelog: "## Unreleased"}
+	req := request{Mode: "tagged", Tag: "v1.0.0-rc.1", Version: "1.0.0-rc.1", Commit: testCommit, MainCommit: testCommit, ExistingTagCommit: testCommit, Changelog: "## Unreleased"}
 	if err := validate(req); err != nil {
 		t.Fatal(err)
 	}
 	req.ExistingTagCommit = "1123456789abcdef0123456789abcdef01234567"
 	if err := validate(req); err == nil || !strings.Contains(err.Error(), "does not point") {
 		t.Fatalf("moved tag error = %v", err)
+	}
+}
+
+func TestValidateTaggedModeRejectsCommitOutsideMain(t *testing.T) {
+	req := request{Mode: "tagged", Tag: "v1.0.0-rc.1", Version: "1.0.0-rc.1", Commit: testCommit, MainCommit: "1123456789abcdef0123456789abcdef01234567", ExistingTagCommit: testCommit, Changelog: "## Unreleased"}
+	if err := validate(req); err == nil || !strings.Contains(err.Error(), "main") {
+		t.Fatalf("off-main error = %v", err)
 	}
 }
 

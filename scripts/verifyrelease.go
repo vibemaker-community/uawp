@@ -228,7 +228,7 @@ func inspectZip(data []byte, binaryName string) ([]byte, releaseMetadata, error)
 	}
 	files := make(map[string][]byte)
 	for _, file := range zr.File {
-		if !safeArchiveName(file.Name) || file.FileInfo().IsDir() || file.Mode()&os.ModeSymlink != 0 {
+		if !safeArchiveName(file.Name) || !file.Mode().IsRegular() || file.UncompressedSize64 > 128<<20 {
 			return nil, releaseMetadata{}, fmt.Errorf("unsafe archive entry %q", file.Name)
 		}
 		if _, duplicate := files[file.Name]; duplicate {
@@ -246,6 +246,9 @@ func inspectZip(data []byte, binaryName string) ([]byte, releaseMetadata, error)
 		if closeErr != nil {
 			return nil, releaseMetadata{}, closeErr
 		}
+		if uint64(len(body)) != file.UncompressedSize64 {
+			return nil, releaseMetadata{}, fmt.Errorf("truncated archive entry %q", file.Name)
+		}
 		files[file.Name] = body
 	}
 	return validateArchiveFiles(files, binaryName)
@@ -256,7 +259,7 @@ func safeArchiveName(name string) bool {
 }
 
 func validateArchiveFiles(files map[string][]byte, binaryName string) ([]byte, releaseMetadata, error) {
-	required := []string{binaryName, "LICENSE", "NOTICE", "README.md", "TRADEMARKS.md", "release-metadata.json"}
+	required := []string{binaryName, "LICENSE", "NOTICE", "README.md", "THIRD_PARTY_NOTICES.md", "TRADEMARKS.md", "release-metadata.json"}
 	sort.Strings(required)
 	actual := make([]string, 0, len(files))
 	for name := range files {
@@ -281,7 +284,7 @@ func executeNativeBinary(target releaseMetadata, binary []byte) error {
 		return err
 	}
 	defer os.RemoveAll(dir)
-	filename := filepath.Join(dir, "uawp")
+	filename := filepath.Join(dir, nativeExecutableName(target))
 	if err := os.WriteFile(filename, binary, 0o700); err != nil {
 		return err
 	}
@@ -297,4 +300,11 @@ func executeNativeBinary(target releaseMetadata, binary []byte) error {
 		return fmt.Errorf("version output %+v does not match release", info)
 	}
 	return nil
+}
+
+func nativeExecutableName(target releaseMetadata) string {
+	if target.GOOS == "windows" {
+		return "uawp.exe"
+	}
+	return "uawp"
 }
