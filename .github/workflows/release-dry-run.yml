@@ -1,0 +1,52 @@
+name: Release Dry Run
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-verify:
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Resolve deterministic snapshot inputs
+        shell: bash
+        run: |
+          commit_timestamp="$(git show -s --format=%ct "$GITHUB_SHA")"
+          built_at="$(date -u -d "@$commit_timestamp" '+%Y-%m-%dT%H:%M:%SZ')"
+          printf 'UAWP_BUILT_AT=%s\nUAWP_COMMIT_TIMESTAMP=%s\n' "$built_at" "$commit_timestamp" >> "$GITHUB_ENV"
+      - name: Generate snapshot metadata
+        run: make release-metadata VERSION=1.0.0-test COMMIT="$GITHUB_SHA"
+      - name: Build snapshot without publishing
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v6
+        with:
+          distribution: goreleaser
+          version: v2.18.0
+          args: release --snapshot --clean --skip=publish
+        env:
+          UAWP_COMMIT: ${{ github.sha }}
+          UAWP_BUILT_AT: ${{ env.UAWP_BUILT_AT }}
+          UAWP_COMMIT_TIMESTAMP: ${{ env.UAWP_COMMIT_TIMESTAMP }}
+      - name: Stage snapshot and run verifyrelease
+        shell: bash
+        run: |
+          mkdir -p dist/release
+          cp dist/raw/uawp_1.0.0-test_*_*.tar.gz dist/raw/uawp_1.0.0-test_*_*.zip dist/raw/uawp_1.0.0-test_checksums.txt dist/release/
+          go run ./scripts --dist dist/release --version 1.0.0-test --commit "$GITHUB_SHA"
+      - name: Run Linux release smoke test
+        shell: bash
+        run: |
+          mkdir -p extracted workspace
+          tar -xzf dist/release/uawp_1.0.0-test_linux_amd64.tar.gz -C extracted uawp
+          printf 'preserve this office file\n' > workspace/notes.txt
+          go run ./cmd/releasesmoke --binary extracted/uawp --workspace workspace

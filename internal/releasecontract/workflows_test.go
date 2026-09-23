@@ -80,6 +80,25 @@ func TestCodeQLSkipsUnsupportedPrivateRepositories(t *testing.T) {
 	}
 }
 
+func TestReleaseDryRunIsManualReadOnlyAndNeverPublishes(t *testing.T) {
+	root := repositoryRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release-dry-run.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, required := range []string{"workflow_dispatch:", "permissions:\n  contents: read", "release --snapshot --clean --skip=publish", "verifyrelease", "goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94"} {
+		if !strings.Contains(text, required) {
+			t.Errorf("release dry run workflow missing %q", required)
+		}
+	}
+	for _, prohibited := range []string{"contents: write", "id-token: write", "attestations: write", "gh release create", "push:", "release:"} {
+		if strings.Contains(text, prohibited) {
+			t.Errorf("release dry run workflow contains publishing capability %q", prohibited)
+		}
+	}
+}
+
 func TestWritePermissionBoundary(t *testing.T) {
 	for _, permission := range []string{"contents: write", "id-token: write", "attestations: write"} {
 		t.Run(permission, func(t *testing.T) {
