@@ -53,6 +53,7 @@ type commandOutput struct {
 	WorkerID            string                   `json:"workerID,omitempty"`
 	SessionID           string                   `json:"sessionID,omitempty"`
 	OwnershipGeneration uint64                   `json:"ownershipGeneration,omitempty"`
+	CheckpointID        string                   `json:"checkpointID,omitempty"`
 	Code                string                   `json:"code,omitempty"`
 }
 
@@ -249,6 +250,9 @@ func writeOutput(writer io.Writer, format string, result commandOutput) {
 	fmt.Fprintln(writer, "planned:")
 	if result.PlanID != "" {
 		fmt.Fprintf(writer, "  plan ID: %s\n", result.PlanID)
+	}
+	if result.CheckpointID != "" {
+		fmt.Fprintf(writer, "  checkpoint ID: %s\n", result.CheckpointID)
 	}
 	for _, change := range result.Changes {
 		fmt.Fprintf(writer, "  %s %s before=%s after=%s %d bytes\n", change.Kind, change.Path, change.BeforeSHA256, change.AfterSHA256, change.Size)

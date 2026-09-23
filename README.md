@@ -48,8 +48,14 @@ Read [safe initialization](docs/user/safe-init.md),
 [diagnostics](docs/user/diagnostics.md), [worker lifecycle](docs/user/lifecycle.md),
 [identity and sessions](docs/user/identity-and-sessions.md),
 [agent automation](docs/user/agent-automation.md),
+[how Agent integration works](docs/architecture/agent-integration.md),
 [stale recovery](docs/user/stale-recovery.md), [agent adapters](docs/user/adapters.md),
 and the [v1 state model](docs/protocol/state-v1.md).
+
+In normal Agent use, the Agent runtime loads its native project entry, which
+points to `.uawp/INSTRUCTIONS.md`. The LLM combines those instructions with the
+user's request and invokes the UAWP CLI through the Agent's terminal capability.
+UAWP does not inspect private conversation-memory files.
 
 Maintenance expert commands are also preview-first:
 

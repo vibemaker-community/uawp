@@ -2,12 +2,16 @@ package cli
 
 import (
 	"bufio"
+	"encoding/base64"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+	"unicode"
 
 	"github.com/uawp/uawp/internal/core"
 	"github.com/uawp/uawp/internal/identity"
@@ -26,6 +30,52 @@ type stringList []string
 
 func (s *stringList) String() string     { return fmt.Sprint([]string(*s)) }
 func (s *stringList) Set(v string) error { *s = append(*s, v); return nil }
+
+func generatedCheckpointID(label string, at time.Time, random io.Reader) (string, error) {
+	var suffix [8]byte
+	if _, err := io.ReadFull(random, suffix[:]); err != nil {
+		return "", fmt.Errorf("generate checkpoint ID: %w", err)
+	}
+	var slug strings.Builder
+	lastHyphen := false
+	for _, current := range strings.ToLower(strings.TrimSpace(label)) {
+		if current >= 'a' && current <= 'z' || current >= '0' && current <= '9' {
+			slug.WriteRune(current)
+			lastHyphen = false
+		} else if (unicode.IsSpace(current) || current == '-' || current == '_' || current == '/') && slug.Len() > 0 && !lastHyphen {
+			slug.WriteByte('-')
+			lastHyphen = true
+		}
+		if slug.Len() >= 30 {
+			break
+		}
+	}
+	name := strings.Trim(slug.String(), "-")
+	if name == "" {
+		name = "checkpoint"
+	}
+	return at.UTC().Format("20060102t150405") + "-" + name + "-" + hex.EncodeToString(suffix[:]), nil
+}
+
+func checkpointApprovalToken(base, id string) string {
+	return base + "." + base64.RawURLEncoding.EncodeToString([]byte(id))
+}
+
+func checkpointApprovalParts(token string) (string, string, error) {
+	separator := strings.LastIndexByte(token, '.')
+	if separator < 0 {
+		return "", "", fmt.Errorf("checkpoint approval token has no generated ID")
+	}
+	base, encodedID := token[:separator], token[separator+1:]
+	if strings.Count(base, ".") != 1 || encodedID == "" {
+		return "", "", fmt.Errorf("checkpoint approval token is malformed")
+	}
+	rawID, err := base64.RawURLEncoding.DecodeString(encodedID)
+	if err != nil || len(rawID) == 0 {
+		return "", "", fmt.Errorf("checkpoint approval token has an invalid generated ID")
+	}
+	return base, string(rawID), nil
+}
 
 func parseLifecycle(command string, args []string, stderr io.Writer) (lifecycleFlags, bool) {
 	var f lifecycleFlags
@@ -345,8 +395,17 @@ func runLifecycleMutationWithRuntime(command string, args []string, rt runtime) 
 	}
 	generatedAt := rt.now()
 	approvedHash := ""
+	autoCheckpointID := false
+	approvalValue := f.approval
+	if command == "checkpoint" && f.milestone == "" && f.approval != "" {
+		approvalValue, f.milestone, err = checkpointApprovalParts(f.approval)
+		if err != nil {
+			return writeLifecycleFailure(rt, f.format, command, root.Path(), codeApprovalDrift, err.Error()+"; request a new preview.", exitApprovalRequired)
+		}
+		autoCheckpointID = true
+	}
 	if f.approval != "" {
-		generatedAt, approvedHash, err = parseApprovalToken(f.approval)
+		generatedAt, approvedHash, err = parseApprovalToken(approvalValue)
 		if err != nil {
 			return writeLifecycleFailure(rt, f.format, command, root.Path(), codeApprovalDrift, "Approval token is malformed; request a new preview.", exitApprovalRequired)
 		}
@@ -409,11 +468,8 @@ func runLifecycleMutationWithRuntime(command string, args []string, rt runtime) 
 		return value, nil
 	}
 	if surface == surfaceHuman {
-		if command == "checkpoint" && f.milestone == "" {
-			f.milestone, err = readPrompt("Milestone ID: ")
-		}
-		if err == nil && command == "checkpoint" && f.label == "" {
-			f.label, err = readPrompt("Milestone label: ")
+		if command == "checkpoint" && f.label == "" {
+			f.label, err = readPrompt("Checkpoint name: ")
 		}
 		if err == nil && (command == "acquire" || command == "handoff") && f.purpose == "" {
 			f.purpose, err = readPrompt("Purpose: ")
@@ -422,6 +478,13 @@ func runLifecycleMutationWithRuntime(command string, args []string, rt runtime) 
 			fmt.Fprintln(rt.stderr, err)
 			return exitUsage
 		}
+	}
+	if command == "checkpoint" && f.milestone == "" {
+		f.milestone, err = generatedCheckpointID(f.label, generatedAt, rt.random)
+		if err != nil {
+			return writeLifecycleFailure(rt, f.format, command, root.Path(), codeInvalidArguments, err.Error(), exitInternal)
+		}
+		autoCheckpointID = true
 	}
 	var value plan.Plan
 	switch command {
@@ -473,8 +536,14 @@ func runLifecycleMutationWithRuntime(command string, args []string, rt runtime) 
 		return writeLifecycleFailure(rt, f.format, command, root.Path(), code, err.Error(), exitInvalidState)
 	}
 	token := approvalToken(generatedAt, value.ID)
+	if command == "checkpoint" && autoCheckpointID {
+		token = checkpointApprovalToken(token, f.milestone)
+	}
 	metadata := value.Metadata()
 	result := commandOutput{SchemaVersion: "1", Command: command, Workspace: root.Path(), PlanID: token, Changes: value.Changes(), Metadata: metadata, Preview: reviewableChanges(root, value), WorkerID: metadata.ActorWorkerID, SessionID: metadata.ActorSessionID, OwnershipGeneration: metadata.OwnershipGeneration, Code: codeApprovalRequired, NextAction: "Review the plan and rerun with --approve " + token}
+	if command == "checkpoint" {
+		result.CheckpointID = f.milestone
+	}
 	if f.approval == "" {
 		presentation := mutationPresentation{Command: command, Plan: value, Result: result, Exceptional: command == "recover"}
 		if surface == surfaceHuman && command != "recover" {

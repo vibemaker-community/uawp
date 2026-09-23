@@ -25,7 +25,11 @@ uawp sync --workspace ./project --worker-id worker-a --session-id session-a --ge
 ```
 
 `resume` reconstructs state before acquisition. `sync` retains ownership.
-Checkpoints are explicit and never overwritten. Handoff verifies final context
+In normal terminal use, `checkpoint` asks only for a human-readable Checkpoint
+name. UAWP generates and reports the unique machine `checkpointID`; duplicate
+names are safe. Expert and Agent automation may optionally supply
+`--milestone-id`; omitting it uses the same automatic generation. Checkpoints
+are explicit and never overwritten. Handoff verifies final context
 before release, creates no automatic checkpoint, and clears the local binding
 only after verified release.
 

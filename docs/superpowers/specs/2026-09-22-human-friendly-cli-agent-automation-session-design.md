@@ -410,9 +410,13 @@ empty document. The exact resulting document is previewed before confirmation.
 
 ### 9.7 `uawp checkpoint`
 
-Checkpoint requires a milestone identifier and human label. Missing values may
-be requested interactively. The checkpoint remains explicit, immutable, and
-never overwrites an existing path.
+Human-friendly checkpoint creation requests only a human-readable Checkpoint
+name and automatically generates a unique machine identifier. The generated ID
+combines a timestamp, an ASCII-safe label summary, and a random suffix; it is
+reported after creation but is not an ordinary-user input. Expert and Agent
+automation retain optional `--milestone-id`; omission uses the same automatic
+generation, preserved across preview and approval. The checkpoint remains
+explicit, immutable, and never overwrites an existing path.
 
 ### 9.8 `uawp handoff`
 

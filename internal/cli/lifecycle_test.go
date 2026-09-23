@@ -114,13 +114,19 @@ func TestHumanLifecycleUsesCurrentDirectoryAndBinding(t *testing.T) {
 		t.Fatalf("context=%q", contextRaw)
 	}
 
-	rt, stdout, stderr = newRuntime("phase-2\nPhase 2 complete\nyes\n")
+	rt, stdout, stderr = newRuntime("Phase 2 complete\nyes\n")
 	if code := runWithRuntime([]string{"checkpoint"}, rt); code != exitOK {
 		t.Fatalf("checkpoint code=%d out=%s err=%s", code, stdout.String(), stderr.String())
+	}
+	if strings.Contains(stdout.String(), "Milestone ID") || !strings.Contains(stdout.String(), "Checkpoint name: ") {
+		t.Fatalf("checkpoint prompts=%s", stdout.String())
 	}
 	entries, _ := os.ReadDir(filepath.Join(dir, ".uawp", "checkpoints"))
 	if len(entries) != 1 {
 		t.Fatalf("checkpoint count=%d", len(entries))
+	}
+	if name := entries[0].Name(); !strings.Contains(name, "phase-2-complete-") {
+		t.Fatalf("generated checkpoint name=%q", name)
 	}
 
 	rt, stdout, stderr = newRuntime("pause for another agent\nyes\n")
@@ -134,6 +140,44 @@ func TestHumanLifecycleUsesCurrentDirectoryAndBinding(t *testing.T) {
 	profile, _ := registry.Selected("", true)
 	if _, found := registry.Binding(dir, profile.ProfileID); found {
 		t.Fatal("handoff retained local binding")
+	}
+}
+
+func TestAutomationCheckpointGeneratesStableMilestoneIDAcrossApproval(t *testing.T) {
+	dir := initializedCLIWorkspace(t)
+	acquire := []string{"acquire", "--workspace", dir, "--worker-id", "worker-a", "--session-id", "session-a", "--agent", "Agent A", "--purpose", "work", "--format", "json"}
+	token := decodePlanToken(t, runCLI(t, acquire, exitApprovalRequired))
+	runCLI(t, append(acquire, "--approve", token), exitOK)
+
+	var stdout, stderr bytes.Buffer
+	rt := runtime{
+		stdin: strings.NewReader(""), stdout: &stdout, stderr: &stderr,
+		getwd: func() (string, error) { return dir, nil }, userConfigDir: os.UserConfigDir,
+		now:    func() time.Time { return time.Date(2026, 9, 23, 13, 5, 7, 0, time.UTC) },
+		random: bytes.NewReader([]byte{0xde, 0xad, 0xbe, 0xef, 1, 2, 3, 4}),
+	}
+	args := []string{"checkpoint", "--workspace", dir, "--worker-id", "worker-a", "--session-id", "session-a", "--generation", "1", "--label", "阶段 二 / Review", "--format", "json", "--non-interactive"}
+	if code := runWithRuntime(args, rt); code != exitApprovalRequired {
+		t.Fatalf("preview code=%d out=%s err=%s", code, stdout.String(), stderr.String())
+	}
+	var preview struct {
+		PlanID       string `json:"planID"`
+		CheckpointID string `json:"checkpointID"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &preview); err != nil || preview.PlanID == "" || preview.CheckpointID != "20260923t130507-review-deadbeef01020304" {
+		t.Fatalf("preview=%s err=%v", stdout.String(), err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := runWithRuntime(append(args, "--approve", preview.PlanID), rt); code != exitOK {
+		t.Fatalf("apply code=%d out=%s err=%s", code, stdout.String(), stderr.String())
+	}
+	entries, err := os.ReadDir(filepath.Join(dir, ".uawp", "checkpoints"))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("entries=%v err=%v", entries, err)
+	}
+	if name := entries[0].Name(); !strings.Contains(name, preview.CheckpointID) {
+		t.Fatalf("generated checkpoint name=%q", name)
 	}
 }
 

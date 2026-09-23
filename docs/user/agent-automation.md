@@ -36,3 +36,9 @@ the same Worker (`ACTIVE_OTHER_SESSION`) from another Worker
 (`ACTIVE_OTHER_WORKER`). Redirected and explicit non-interactive execution use
 the same no-prompt contract. Git is optional, but same-directory parallel
 writing is not supported.
+
+For `checkpoint`, `--label` is the human-readable name. `--milestone-id` is
+optional: when omitted, UAWP generates a unique ID and returns it as
+`checkpointID`. The generated ID is embedded in the opaque `planID`, so the
+apply call repeats the same command and approval token without inventing or
+copying a separate ID.
