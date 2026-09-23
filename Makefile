@@ -1,8 +1,9 @@
-.PHONY: fmt test race vet check build validate-release-version release-metadata release-snapshot release-bundle
+.PHONY: fmt test race vet workflows actionlint check build validate-release-version release-metadata release-snapshot release-bundle
 
 GO ?= go
 GOFMT ?= gofmt
 GORELEASER ?= goreleaser
+ACTIONLINT_VERSION ?= v1.7.7
 VERSION ?= dev
 COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || printf unknown)
 SOURCE_DATE_EPOCH ?= $(shell git show -s --format=%ct HEAD 2>/dev/null)
@@ -25,7 +26,14 @@ race:
 vet:
 	$(GO) vet ./...
 
-check: fmt test race vet
+workflows:
+	$(GO) test -count=1 ./internal/releasecontract -run 'TestWorkflow|TestNative'
+
+# `go run module@version` verifies the pinned module through Go's checksum database.
+actionlint:
+	$(GO) run github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
+
+check: fmt test race vet workflows
 
 validate-release-version:
 	@if [ -n "$(RELEASE_TAG)" ] && [ "$(RELEASE_TAG)" != "v$(NORMALIZED_VERSION)" ]; then \
