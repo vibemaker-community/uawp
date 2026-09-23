@@ -1,0 +1,68 @@
+name: Post-release Verification
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-public-assets:
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: darwin-arm64
+          - runner: macos-15-intel
+            target: darwin-amd64
+          - runner: ubuntu-24.04
+            target: linux-amd64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+          - runner: windows-2025
+            target: windows-amd64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Download assets from the public release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          mkdir -p dist/release
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir dist/release
+      - name: Verify public attestations
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh attestation verify dist/release/*.tar.gz --repo "$GITHUB_REPOSITORY"
+          gh attestation verify dist/release/*.zip --repo "$GITHUB_REPOSITORY"
+          gh attestation verify dist/release/*_checksums.txt --repo "$GITHUB_REPOSITORY"
+      - name: Run verifyrelease against public assets
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          commit="$(git rev-parse HEAD)"
+          go run ./scripts/verifyrelease.go --dist dist/release --version "$version" --commit "$commit"
+          mkdir -p evidence
+          printf '{"tag":"%s","commit":"%s","target":"%s","status":"passed"}\n' "$RELEASE_TAG" "$commit" "${{ matrix.target }}" > "evidence/public-${{ matrix.target }}.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: public-verification-${{ matrix.target }}
+          path: evidence
+          if-no-files-found: error
+          retention-days: 30

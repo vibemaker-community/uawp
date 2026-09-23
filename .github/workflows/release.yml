@@ -1,0 +1,160 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Resolve immutable release inputs
+        shell: bash
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          version="${tag#v}"
+          built_at="$(git show -s --format=%cI "$GITHUB_SHA")"
+          commit_timestamp="$(git show -s --format=%ct "$GITHUB_SHA")"
+          printf 'RELEASE_TAG=%s\nRELEASE_VERSION=%s\nUAWP_BUILT_AT=%s\nUAWP_COMMIT_TIMESTAMP=%s\n' "$tag" "$version" "$built_at" "$commit_timestamp" >> "$GITHUB_ENV"
+      - name: Validate tag and repository state
+        run: go run ./cmd/releasecheck --mode tagged --tag "$RELEASE_TAG" --version "$RELEASE_VERSION" --commit "$GITHUB_SHA"
+      - name: Run source, governance, and security gates
+        shell: bash
+        run: |
+          make check
+          go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+      - name: Generate release metadata
+        run: make release-metadata VERSION="$RELEASE_VERSION" COMMIT="$GITHUB_SHA"
+      - name: Build release bundle once
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v6
+        with:
+          distribution: goreleaser
+          version: v2.18.0
+          args: release --clean --skip=publish
+        env:
+          UAWP_COMMIT: ${{ github.sha }}
+          UAWP_BUILT_AT: ${{ env.UAWP_BUILT_AT }}
+          UAWP_COMMIT_TIMESTAMP: ${{ env.UAWP_COMMIT_TIMESTAMP }}
+      - name: Verify and stage exact bundle
+        shell: bash
+        run: |
+          mkdir -p dist/release
+          cp dist/raw/uawp_"$RELEASE_VERSION"_*_*.tar.gz dist/raw/uawp_"$RELEASE_VERSION"_*_*.zip dist/raw/uawp_"$RELEASE_VERSION"_checksums.txt dist/release/
+          go run ./scripts/verifyrelease.go --dist dist/release --version "$RELEASE_VERSION" --commit "$GITHUB_SHA"
+          printf '{"tag":"%s","commit":"%s","status":"passed"}\n' "$RELEASE_TAG" "$GITHUB_SHA" > dist/release/checksums-verified.json
+      - name: Upload one-day release transfer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-bundle
+          path: dist/release
+          if-no-files-found: error
+          retention-days: 1
+
+  native:
+    needs: build
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: darwin-arm64
+          - runner: macos-15-intel
+            target: darwin-amd64
+          - runner: ubuntu-24.04
+            target: linux-amd64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+          - runner: windows-2025
+            target: windows-amd64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: release-bundle
+          path: dist/release
+      - name: Run verifyrelease and native CLI smoke test
+        shell: bash
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          version="${tag#v}"
+          rm -f dist/release/checksums-verified.json
+          go run ./scripts/verifyrelease.go --dist dist/release --version "$version" --commit "$GITHUB_SHA"
+          mkdir -p evidence
+          printf '{"tag":"%s","commit":"%s","target":"%s","status":"passed"}\n' "$tag" "$GITHUB_SHA" "${{ matrix.target }}" > "evidence/smoke-${{ matrix.target }}.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: evidence-${{ matrix.target }}
+          path: evidence
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: native
+    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: release-bundle
+          path: dist/release
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: evidence-*
+          path: evidence
+          merge-multiple: true
+      - name: Validate aggregate native evidence
+        shell: bash
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          version="${tag#v}"
+          cp dist/release/checksums-verified.json evidence/
+          go run ./cmd/releasecheck --mode publish --tag "$tag" --version "$version" --commit "$GITHUB_SHA" --evidence-dir evidence
+      - name: Attest verified release assets
+        uses: actions/attest-build-provenance@1e69f48acb82d1966a394da916b4c1698aa569d6 # v3
+        with:
+          subject-path: |
+            dist/release/*.tar.gz
+            dist/release/*.zip
+            dist/release/*_checksums.txt
+      - name: Publish immutable GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          rm dist/release/checksums-verified.json
+          gh release create "$tag" dist/release/* --verify-tag --title "UAWP $tag" --notes-file CHANGELOG.md

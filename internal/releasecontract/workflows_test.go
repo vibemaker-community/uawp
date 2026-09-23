@@ -90,6 +90,55 @@ func TestWritePermissionBoundary(t *testing.T) {
 	}
 }
 
+func TestReleaseWorkflowBuildsOnceAndTestsExactBundleEverywhere(t *testing.T) {
+	root := repositoryRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for action, sha := range map[string]string{
+		"actions/upload-artifact":         "ea165f8d65b6e75b540449e92b4886f43607fa02",
+		"actions/download-artifact":       "634f93cb2916e3fdff6788551b99b062d0335ce0",
+		"actions/attest-build-provenance": "1e69f48acb82d1966a394da916b4c1698aa569d6",
+		"goreleaser/goreleaser-action":    "f06c13b6b1a9625abc9e6e439d9c05a8f2190e94",
+	} {
+		if !strings.Contains(text, "uses: "+action+"@"+sha) {
+			t.Errorf("release workflow missing pinned %s", action)
+		}
+	}
+	if strings.Count(text, "goreleaser/goreleaser-action@") != 1 {
+		t.Errorf("GoReleaser action count = %d, want 1", strings.Count(text, "goreleaser/goreleaser-action@"))
+	}
+	if !strings.Contains(text, "retention-days: 1") {
+		t.Error("release transfer artifact must have one-day retention")
+	}
+	for _, runner := range []string{"macos-15", "macos-15-intel", "ubuntu-24.04", "ubuntu-24.04-arm", "windows-2025"} {
+		if !strings.Contains(text, "runner: "+runner) {
+			t.Errorf("release workflow missing native runner %s", runner)
+		}
+	}
+	for _, gate := range []string{"releasecheck", "verifyrelease", "checksums-verified.json", "gh release create"} {
+		if !strings.Contains(text, gate) {
+			t.Errorf("release workflow missing gate %q", gate)
+		}
+	}
+}
+
+func TestPostReleaseWorkflowVerifiesPublicAssets(t *testing.T) {
+	root := repositoryRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "post-release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, required := range []string{"types: [published]", "gh release download", "gh attestation verify", "verifyrelease", "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"} {
+		if !strings.Contains(text, required) {
+			t.Errorf("post-release workflow missing %q", required)
+		}
+	}
+}
+
 func TestNativeMatrixUsesExactSupportedRunners(t *testing.T) {
 	root := repositoryRoot(t)
 	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
