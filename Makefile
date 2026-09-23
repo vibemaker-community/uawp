@@ -1,7 +1,8 @@
-.PHONY: fmt test race vet check build validate-release-version
+.PHONY: fmt test race vet check build validate-release-version release-metadata release-snapshot release-bundle
 
 GO ?= go
 GOFMT ?= gofmt
+GORELEASER ?= goreleaser
 VERSION ?= dev
 COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || printf unknown)
 SOURCE_DATE_EPOCH ?= $(shell git show -s --format=%ct HEAD 2>/dev/null)
@@ -35,3 +36,19 @@ validate-release-version:
 build: validate-release-version
 	@mkdir -p "$(dir $(BUILD_OUTPUT))"
 	CGO_ENABLED=0 $(GO) build -trimpath -buildvcs=false -ldflags '$(LDFLAGS)' -o "$(BUILD_OUTPUT)" ./cmd/uawp
+
+release-metadata:
+	$(GO) run ./scripts --generate-metadata release/metadata --version "$(NORMALIZED_VERSION)" --commit "$(COMMIT)"
+
+release-snapshot:
+	$(MAKE) release-metadata VERSION=1.0.0-test COMMIT="$(COMMIT)"
+	UAWP_COMMIT="$(COMMIT)" UAWP_BUILT_AT="$(BUILT_AT)" UAWP_COMMIT_TIMESTAMP="$(SOURCE_DATE_EPOCH)" $(GORELEASER) release --snapshot --clean --skip=publish
+	@mkdir -p dist/release
+	cp dist/raw/uawp_1.0.0-test_*_*.tar.gz dist/raw/uawp_1.0.0-test_*_*.zip dist/raw/uawp_1.0.0-test_checksums.txt dist/release/
+	$(GO) run ./scripts --dist dist/release --version 1.0.0-test --commit "$(COMMIT)"
+
+release-bundle: validate-release-version release-metadata
+	UAWP_COMMIT="$(COMMIT)" UAWP_BUILT_AT="$(BUILT_AT)" UAWP_COMMIT_TIMESTAMP="$(SOURCE_DATE_EPOCH)" $(GORELEASER) release --clean --skip=publish
+	@mkdir -p dist/release
+	cp dist/raw/uawp_$(NORMALIZED_VERSION)_*_*.tar.gz dist/raw/uawp_$(NORMALIZED_VERSION)_*_*.zip dist/raw/uawp_$(NORMALIZED_VERSION)_checksums.txt dist/release/
+	$(GO) run ./scripts --dist dist/release --version "$(NORMALIZED_VERSION)" --commit "$(COMMIT)"

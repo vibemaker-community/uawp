@@ -1,0 +1,86 @@
+version: 2
+
+project_name: uawp
+dist: dist/raw
+
+builds:
+  - id: uawp-build
+    main: ./cmd/uawp
+    binary: uawp
+    env:
+      - CGO_ENABLED=0
+    targets:
+      - darwin_amd64
+      - darwin_arm64
+      - linux_amd64
+      - linux_arm64
+      - windows_amd64
+    flags:
+      - -trimpath
+      - -buildvcs=false
+    ldflags:
+      - >-
+        -s -w -buildid=
+        -X github.com/vibemaker-community/uawp/internal/buildinfo.Version={{ .Version }}
+        -X github.com/vibemaker-community/uawp/internal/buildinfo.Commit={{ .Env.UAWP_COMMIT }}
+        -X github.com/vibemaker-community/uawp/internal/buildinfo.BuiltAt={{ .Env.UAWP_BUILT_AT }}
+    mod_timestamp: "{{ .Env.UAWP_COMMIT_TIMESTAMP }}"
+
+archives:
+  - id: uawp-archive
+    ids:
+      - uawp-build
+    name_template: "uawp_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    builds_info:
+      owner: root
+      group: root
+      mtime: "{{ .Env.UAWP_BUILT_AT }}"
+    files:
+      - src: LICENSE
+        info:
+          mode: 0644
+          mtime: "{{ .Env.UAWP_BUILT_AT }}"
+      - src: NOTICE
+        info:
+          mode: 0644
+          mtime: "{{ .Env.UAWP_BUILT_AT }}"
+      - src: TRADEMARKS.md
+        info:
+          mode: 0644
+          mtime: "{{ .Env.UAWP_BUILT_AT }}"
+      - src: README.md
+        info:
+          mode: 0644
+          mtime: "{{ .Env.UAWP_BUILT_AT }}"
+      - src: "release/metadata/{{ .Os }}_{{ .Arch }}.json"
+        dst: release-metadata.json
+        info:
+          mode: 0644
+          mtime: "{{ .Env.UAWP_BUILT_AT }}"
+
+checksum:
+  name_template: "uawp_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+  ids:
+    - uawp-archive
+
+snapshot:
+  version_template: "1.0.0-test"
+
+changelog:
+  disable: true
+
+source:
+  enabled: false
+
+release:
+  disable: true
+
+metadata:
+  mod_timestamp: "{{ .Env.UAWP_COMMIT_TIMESTAMP }}"

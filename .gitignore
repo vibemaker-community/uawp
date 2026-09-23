@@ -1,5 +1,9 @@
 .worktrees/
 .superpowers/
 /bin/
+/dist/
+/release/metadata/
+/uawp
+/uawp.exe
 *.test
 coverage.out
