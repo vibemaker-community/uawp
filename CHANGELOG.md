@@ -5,6 +5,10 @@ tags and assets are immutable.
 
 ## Unreleased
 
+No changes yet.
+
+## 1.0.0-rc.1 - 2026-09-24
+
 ### Added
 
 - Agent-neutral `.uawp/` state, lifecycle, Prompt Library, and provider adapter
@@ -25,5 +29,6 @@ tags and assets are immutable.
 - GitHub Actions use read-only defaults, immutable action commits, bounded
   timeouts, CodeQL, dependency review, and Go vulnerability analysis.
 
-The project remains in pre-release hardening until hosted native gates pass and
-`v1.0.0-rc.1` is published and verified.
+This release candidate is ready for the final human publication gate. It is
+not a completed release until its immutable tag, native release workflow,
+checksums, attestations, and public installation checks all pass.
