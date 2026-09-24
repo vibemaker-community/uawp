@@ -395,7 +395,7 @@ Use immutable references for artifact actions:
 
 - upload: `ea165f8d65b6e75b540449e92b4886f43607fa02`
 - download: `634f93cb2916e3fdff6788551b99b062d0335ce0`
-- attest: `1e69f48acb82d1966a394da916b4c1698aa569d6`
+- attest: `96278af6caaf10aea03fd8d33a09a777ca52d62f`
 - GoReleaser: `f06c13b6b1a9625abc9e6e439d9c05a8f2190e94`
 
 Set transfer-artifact retention to one day. Do not use GitHub environments as the sole human gate because the project must remain usable on a zero-cost account; the human gate is explicit user confirmation before the local tag is created and pushed.

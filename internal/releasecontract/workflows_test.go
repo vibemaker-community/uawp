@@ -189,7 +189,7 @@ func TestReleaseWorkflowBuildsOnceAndTestsExactBundleEverywhere(t *testing.T) {
 	for action, sha := range map[string]string{
 		"actions/upload-artifact":         "ea165f8d65b6e75b540449e92b4886f43607fa02",
 		"actions/download-artifact":       "634f93cb2916e3fdff6788551b99b062d0335ce0",
-		"actions/attest-build-provenance": "1e69f48acb82d1966a394da916b4c1698aa569d6",
+		"actions/attest-build-provenance": "96278af6caaf10aea03fd8d33a09a777ca52d62f",
 		"goreleaser/goreleaser-action":    "f06c13b6b1a9625abc9e6e439d9c05a8f2190e94",
 	} {
 		if !strings.Contains(text, "uses: "+action+"@"+sha) {
