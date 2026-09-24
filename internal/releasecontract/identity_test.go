@@ -29,7 +29,7 @@ func TestCanonicalIdentity(t *testing.T) {
 			if walkErr != nil {
 				return walkErr
 			}
-			if entry.IsDir() && (entry.Name() == ".git" || entry.Name() == ".superpowers") {
+			if entry.IsDir() && (entry.Name() == ".git" || entry.Name() == ".superpowers" || entry.Name() == ".worktrees") {
 				return filepath.SkipDir
 			}
 			if entry.IsDir() || filepath.Ext(path) != ".go" {
@@ -128,8 +128,16 @@ func readFile(t *testing.T, path string) string {
 	return string(contents)
 }
 
+func TestExcludedReleaseDirectory(t *testing.T) {
+	for _, rel := range []string{".git", ".superpowers", ".worktrees", "bin", filepath.Join("docs", "superpowers"), filepath.Join("docs", "handoffs")} {
+		if !excludedReleaseDirectory(rel) {
+			t.Errorf("excludedReleaseDirectory(%q) = false, want true", rel)
+		}
+	}
+}
+
 func excludedReleaseDirectory(rel string) bool {
-	return rel == ".git" || rel == ".superpowers" || rel == "bin" ||
+	return rel == ".git" || rel == ".superpowers" || rel == ".worktrees" || rel == "bin" ||
 		rel == filepath.Join("docs", "superpowers") || rel == filepath.Join("docs", "handoffs")
 }
 
