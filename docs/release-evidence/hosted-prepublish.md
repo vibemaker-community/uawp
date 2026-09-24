@@ -74,6 +74,11 @@ runtime and `go.mod` cache key address both root causes. The workflow contract
 now rejects any stale setup-go reference; required hosted checks are rerun on
 the evidence commit before Task 10 closes.
 
+The separately pinned `govulncheck` composite action also enabled its own
+dependency cache by default and expected a `go.sum` that this dependency-free
+module intentionally does not have. That cache is now explicitly disabled;
+the vulnerability scan itself remains unchanged.
+
 ## CLA and deferred public-only controls
 
 CLA Assistant is installed with repository access restricted to

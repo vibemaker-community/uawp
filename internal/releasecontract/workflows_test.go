@@ -69,6 +69,20 @@ func TestSecurityWorkflowsUsePinnedAnalyzers(t *testing.T) {
 	}
 }
 
+func TestGovulncheckDisablesCacheWithoutGoSum(t *testing.T) {
+	root := repositoryRoot(t)
+	if _, err := os.Stat(filepath.Join(root, "go.sum")); !os.IsNotExist(err) {
+		t.Fatalf("test assumes the repository intentionally has no go.sum, stat error = %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "govulncheck.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "          cache: false") {
+		t.Fatal("govulncheck must disable its dependency cache when the repository has no go.sum")
+	}
+}
+
 func TestCodeQLSkipsUnsupportedPrivateRepositories(t *testing.T) {
 	root := repositoryRoot(t)
 	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "codeql.yml"))
