@@ -78,7 +78,10 @@ The separately pinned `govulncheck` composite action also enabled its own
 dependency cache by default and expected a `go.sum` that this dependency-free
 module intentionally does not have. That cache is now explicitly disabled;
 its default `stable` Go version input is also cleared so `go.mod` remains the
-single version source. The vulnerability scan itself remains unchanged.
+single version source. The project toolchain baseline is raised from the
+unpatched `go1.26.0` release to `go1.26.8`, the current security-patched 1.26
+release used by the local passing vulnerability gate. The vulnerability scan
+itself remains unchanged.
 
 ## CLA and deferred public-only controls
 

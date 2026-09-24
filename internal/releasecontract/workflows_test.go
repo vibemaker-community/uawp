@@ -1,6 +1,7 @@
 package releasecontract
 
 import (
+	goversion "go/version"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -10,6 +11,21 @@ import (
 )
 
 var actionReference = regexp.MustCompile(`(?m)^\s*-?\s*uses:\s*([^\s@]+)@([^\s#]+)`)
+
+func TestGoDirectiveUsesSecurityPatchedToolchain(t *testing.T) {
+	root := repositoryRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	match := regexp.MustCompile(`(?m)^go\s+(\S+)$`).FindStringSubmatch(string(data))
+	if len(match) != 2 {
+		t.Fatal("go.mod must declare a Go version")
+	}
+	if got := "go" + match[1]; goversion.Compare(got, "go1.26.8") < 0 {
+		t.Fatalf("Go toolchain %s predates the required security patch baseline go1.26.8", got)
+	}
+}
 
 func TestWorkflowSecurityContract(t *testing.T) {
 	root := repositoryRoot(t)
