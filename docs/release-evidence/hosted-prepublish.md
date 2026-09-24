@@ -77,7 +77,8 @@ the evidence commit before Task 10 closes.
 The separately pinned `govulncheck` composite action also enabled its own
 dependency cache by default and expected a `go.sum` that this dependency-free
 module intentionally does not have. That cache is now explicitly disabled;
-the vulnerability scan itself remains unchanged.
+its default `stable` Go version input is also cleared so `go.mod` remains the
+single version source. The vulnerability scan itself remains unchanged.
 
 ## CLA and deferred public-only controls
 

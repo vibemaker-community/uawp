@@ -78,8 +78,12 @@ func TestGovulncheckDisablesCacheWithoutGoSum(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "          cache: false") {
+	text := string(data)
+	if !strings.Contains(text, "          cache: false") {
 		t.Fatal("govulncheck must disable its dependency cache when the repository has no go.sum")
+	}
+	if !strings.Contains(text, "          go-version-input: ''") {
+		t.Fatal("govulncheck must clear its default Go version when go-version-file is used")
 	}
 }
 
