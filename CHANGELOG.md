@@ -3,9 +3,14 @@
 All notable changes are recorded here. UAWP uses Semantic Versioning; public
 tags and assets are immutable.
 
-## Unreleased
+## 1.0.1 - 2026-09-24
 
-No changes yet.
+### Fixed
+
+- Corrected the final GitHub release publication path so the publish job has
+  repository context before running `gh release create`.
+- Preserved the failed `v1.0.0` tag as immutable audit evidence and promoted
+  the verified recovery candidate through a new patch release.
 
 ## 1.0.0-rc.1 - 2026-09-24
 
